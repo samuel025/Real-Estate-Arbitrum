@@ -31,6 +31,8 @@ contract RealEstateTokenization {
         bool isListed;
         uint256 totalRentCollected;
         string images;
+        string description;
+        string propertyAddress;
     }
 
     struct Shareholder {
@@ -118,7 +120,9 @@ contract RealEstateTokenization {
         uint256 _totalShares,
         uint256 _rent,
         uint256 _rentPeriod,
-        string memory _images
+        string memory _images,
+        string memory  _description,
+        string memory _propertyAddress
     ) external {
         if (_totalShares == 0 || _price == 0 || _rent == 0 || _rentPeriod == 0) 
             revert InvalidAmount();
@@ -137,7 +141,9 @@ contract RealEstateTokenization {
             rentPeriod: _rentPeriod,
             isListed: true,
             totalRentCollected: 0,
-            images: _images
+            description: _description,
+            images: _images,
+            propertyAddress: _propertyAddress
         });
 
         emit PropertyListed(propertyId, _owner, _name, _price, _totalShares);
@@ -149,7 +155,9 @@ contract RealEstateTokenization {
         uint256 _price,
         uint256 _rent,
         uint256 _rentPeriod,
-        string memory _images
+        string memory _images,
+        string memory _description,
+        string memory _propertyAddress
     ) external propertyExists(_propertyId) {
         Property storage property = properties[_propertyId];
         
@@ -165,6 +173,8 @@ contract RealEstateTokenization {
         property.rent = _rent;
         property.rentPeriod = _rentPeriod;
         property.images = _images;
+        property.description = _description;
+        property.propertyAddress = _propertyAddress;
     }
 
     /**
@@ -405,20 +415,19 @@ function purchaseShares(
             uint256 shares,
             uint256 rentClaimed,
             uint256 unclaimedRent
-        ) 
-    {
-        Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
-        Property storage property = properties[_propertyId];
-        
-        shares = shareholder.sharesOwned;
-        rentClaimed = shareholder.rentClaimed;
-        
-        uint256 shareholderPercentage = (shareholder.sharesOwned * PRECISION) / property.totalShares;
-        uint256 totalEntitledRent = (property.rentPool * shareholderPercentage) / PRECISION;
-        unclaimedRent = totalEntitledRent - shareholder.rentClaimed;
-        
-        return (shares, rentClaimed, unclaimedRent);
-    }
+        ) {
+            Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
+            Property storage property = properties[_propertyId];
+            
+            shares = shareholder.sharesOwned;
+            rentClaimed = shareholder.rentClaimed;
+            
+            uint256 shareholderPercentage = (shareholder.sharesOwned * PRECISION) / property.totalShares;
+            uint256 totalEntitledRent = (property.rentPool * shareholderPercentage) / PRECISION;
+            unclaimedRent = totalEntitledRent - shareholder.rentClaimed;
+            
+            return (shares, rentClaimed, unclaimedRent);
+        }
 
     function getPropertyReviews(uint256 _propertyId) 
         external 
@@ -440,6 +449,59 @@ function purchaseShares(
         return block.timestamp >= property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
     }
 
+    /**
+     * @dev Get all properties where the given address is a shareholder
+     */
+    function getShareholderProperties(address _shareholder) external view returns (Property[] memory) {
+        // First count the number of properties where user is shareholder
+        uint256 count = 0;
+        for (uint256 i = 1; i < propertyIdCounter; i++) {
+            if (properties[i].isListed && shareholders[i][_shareholder].sharesOwned > 0) {
+                count++;
+            }
+        }
+        
+        // Create array of correct size
+        Property[] memory shareholderProperties = new Property[](count);
+        
+        // Fill array with properties where user is shareholder
+        uint256 currentIndex = 0;
+        for (uint256 i = 1; i < propertyIdCounter; i++) {
+            if (properties[i].isListed && shareholders[i][_shareholder].sharesOwned > 0) {
+                shareholderProperties[currentIndex] = properties[i];
+                currentIndex++;
+            }
+        }
+        
+        return shareholderProperties;
+    }
+
+    /**
+     * @dev Get all properties listed by a specific owner
+     */
+    function getOwnerProperties(address _owner) external view returns (Property[] memory) {
+        // First count the number of properties owned
+        uint256 count = 0;
+        for (uint256 i = 1; i < propertyIdCounter; i++) {
+            if (properties[i].isListed && properties[i].owner == _owner) {
+                count++;
+            }
+        }
+        
+        // Create array of correct size
+        Property[] memory ownerProperties = new Property[](count);
+        
+        // Fill array with owned properties
+        uint256 currentIndex = 0;
+        for (uint256 i = 1; i < propertyIdCounter; i++) {
+            if (properties[i].isListed && properties[i].owner == _owner) {
+                ownerProperties[currentIndex] = properties[i];
+                currentIndex++;
+            }
+        }
+        
+        return ownerProperties;
+    }
 
     receive() external payable {}
 }
