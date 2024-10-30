@@ -19,6 +19,7 @@ contract RealEstateTokenization {
     error InvalidLiquidityAmount();
 
     struct Property {
+        uint256 id;
         string name;
         address payable owner;
         uint256 price;
@@ -130,6 +131,7 @@ contract RealEstateTokenization {
         uint256 propertyId = propertyIdCounter++;
         
         properties[propertyId] = Property({
+            id: propertyId,
             name: _name,
             owner: _owner,
             price: _price,
@@ -168,6 +170,10 @@ contract RealEstateTokenization {
         if (_price == 0 || _rent == 0 || _rentPeriod == 0) 
             revert InvalidAmount();
 
+        // Keep the existing id when updating other fields
+        uint256 existingId = property.id;
+        
+        // Update fields
         property.name = _name;
         property.price = _price;
         property.rent = _rent;
@@ -175,53 +181,53 @@ contract RealEstateTokenization {
         property.images = _images;
         property.description = _description;
         property.propertyAddress = _propertyAddress;
+        
+        // Ensure ID remains unchanged
+        property.id = existingId;
     }
 
     /**
      * @dev Purchase shares of a property
      */
-    /**
- * @dev Purchase shares of a property
- */
-function purchaseShares(
-    uint256 _propertyId,
-    uint256 _shares,
-    address _buyer
-) external payable propertyExists(_propertyId) {
-    Property storage property = properties[_propertyId];
+    function purchaseShares(
+        uint256 _propertyId,
+        uint256 _shares,
+        address _buyer
+    ) external payable propertyExists(_propertyId) {
+        Property storage property = properties[_propertyId];
 
-    // Check if the requested shares are available
-    if (_shares == 0 || _shares > property.availableShares)
-        revert InsufficientShares();
+        // Check if the requested shares are available
+        if (_shares == 0 || _shares > property.availableShares)
+            revert InsufficientShares();
 
-    // Calculate the share price with precision
-    uint256 sharePrice = (property.price * PRECISION) / property.totalShares;
-    uint256 totalCost = (sharePrice * _shares) / PRECISION;
+        // Calculate the share price with precision
+        uint256 sharePrice = (property.price * PRECISION) / property.totalShares;
+        uint256 totalCost = (sharePrice * _shares) / PRECISION;
 
-    // Ensure the buyer has sent enough Ether to cover the cost
-    if (msg.value < totalCost)
-        revert InvalidAmount();
+        // Ensure the buyer has sent enough Ether to cover the cost
+        if (msg.value < totalCost)
+            revert InvalidAmount();
 
-    // Reduce the available shares of the property
-    property.availableShares -= _shares;
+        // Reduce the available shares of the property
+        property.availableShares -= _shares;
 
-    // Update the buyer's shares
-    Shareholder storage shareholder = shareholders[_propertyId][_buyer];
-    shareholder.sharesOwned += _shares;
+        // Update the buyer's shares
+        Shareholder storage shareholder = shareholders[_propertyId][_buyer];
+        shareholder.sharesOwned += _shares;
 
-    // Calculate the liquidity fee and adjust the payment
-    uint256 fee = (totalCost * LIQUIDITY_FEE) / BASIS_POINTS;
-    uint256 payment = totalCost - fee;
+        // Calculate the liquidity fee and adjust the payment
+        uint256 fee = (totalCost * LIQUIDITY_FEE) / BASIS_POINTS;
+        uint256 payment = totalCost - fee;
 
-    // Add fee to the liquidity pool
-    totalLiquidity += fee;
+        // Add fee to the liquidity pool
+        totalLiquidity += fee;
 
-    // Transfer the remaining payment to the property owner
-    (bool success, ) = property.owner.call{value: payment}("");
-    if (!success) revert TransferFailed();
+        // Transfer the remaining payment to the property owner
+        (bool success, ) = property.owner.call{value: payment}("");
+        if (!success) revert TransferFailed();
 
-    emit SharesPurchased(_propertyId, _buyer, _shares, totalCost);
-}
+        emit SharesPurchased(_propertyId, _buyer, _shares, totalCost);
+    }
 
     /**
      * @dev Sell shares back to the market

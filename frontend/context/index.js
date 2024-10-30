@@ -1,16 +1,12 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
 import { 
     useAddress,
     useContract,
-    useContractRead,
     useContractWrite,
-    useWriteContract,
     useMetamask,
-    useContractEvents,
     useSigner,
     useDisconnect,
-    AddressSchema
 } from "@thirdweb-dev/react";
 
 import { ethers } from "ethers";
@@ -18,8 +14,16 @@ import { ethers } from "ethers";
 
 const AppContext = createContext();
 
-export const UseAppContext = ({children}) => {
-  const {contract} = useContract("0xFb6fcabef850d5680603b6529da8B532f204Ae16")
+export const useAppContext = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useAppContext must be used within an AppProvider');
+  }
+  return context;
+};
+
+export const AppProvider = ({children}) => {
+  const {contract} = useContract("0xAf2Edb0699a14e3d5E72869393d30eA94f7DfE06")
 
   const address = useAddress();
   const connect = useMetamask()
@@ -27,19 +31,59 @@ export const UseAppContext = ({children}) => {
   const signer = useSigner();
 
   const [userBalance, setUserBalance] = useState("");
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (signer) {
+        try {
+          const balance = await signer.getBalance();
+          // Convert balance from wei to ETH and set it in state
+          setUserBalance(ethers.utils.formatEther(balance));
+        } catch (error) {
+          console.error("Error fetching balance:", error);
+          setUserBalance("0");
+        }
+      } else {
+        setUserBalance("0");
+      }
+    };
+
+    fetchBalance();
+  }, [signer]);
+
 
   // -------------------------------------
 
   const {mutateAsync: listProperty} = useContractWrite(contract, "listProperty");
-  const listPropertyFunction = async (formData) => {
-    const {name, price, totalShares, rent, rentPeriod, images} = formData;
+  const listPropertyFunction = async (
+    owner,
+    name,
+    price,
+    totalShares,
+    rent,
+    rentPeriod,
+    images,
+    description,
+    propertyAddress
+  ) => {
     try {
-      const data = await listProperty({
-        args: [address, name, price, totalShares, rent, rentPeriod, images]
-      })
-      console.info("Contract called successfully", data);
+        const data = await contract.call(
+            "listProperty",
+            [
+                owner,          // _owner
+                name,           // _name
+                price,         // _price
+                totalShares,   // _totalShares
+                rent,          // _rent
+                rentPeriod,    // _rentPeriod
+                images,        // _images
+                description,   // _description
+                propertyAddress // _propertyAddress
+            ]
+        );
+        return data;
     } catch (error) {
-      console.log("Error calling contract", error);
+        console.error("Error in listPropertyFunction:", error);
+        throw error;
     }
   }
 
@@ -48,21 +92,21 @@ export const UseAppContext = ({children}) => {
   const getPropertiesFunction = async () => {
     try {
         const properties = await contract.call('getAllProperties');
-        const balance = await signer?.getBalance();
-        const userBalance = address ? ethers.utils.formatEther(balance.toString()) : ""
-        setUserBalance(userBalance);
+        console.log("Raw properties from contract:", properties);
 
-
-        const parsedProperties = properties.map((property, index) => ({
+        const parsedProperties = properties.map((property) => ({
+            propertyId: property.id.toString(),
             owner: property.owner,
             title: property.name,
             description: property.description,
-            price: ethers.utils.formatEther(property.price.toString()),
-            rent: property.rent,
-            rentPeriod: property.rentPeriod,
+            price: property.price.toString(),
+            rent: property.rent.toString(),
+            rentPeriod: property.rentPeriod.toString(),
             image: property.images,
             propertyAddress: property.propertyAddress
-        }))
+        }));
+
+        console.log("Parsed properties:", parsedProperties);
         return parsedProperties;
     } catch (err) {
         console.error("contract call failure: ", err);
@@ -92,7 +136,7 @@ const buySharesFunction = async (formData) => {
   const {propertyId, shares, price} = formData;
   try {
     const data = await buyShares({
-      args: [propertyId, shares],
+      args: [propertyId, shares, address],
       overrides: {
         value: ethers.utils.parseEther(price) // This should be in wei
       }
@@ -227,27 +271,30 @@ const removeLiquidityFunction = async (amount) => {
 
   const getSinglePropertyFunction = async (propertyId) => {
     try {
-        const properties = await contract.call('getProperty', propertyId);
-        const balance = await signer?.getBalance();
-        const userBalance = address ? ethers.utils.formatEther(balance.toString()) : ""
-        setUserBalance(userBalance);
+        console.log("Getting property with ID:", propertyId);
+        const property = await contract.call('getProperty', [propertyId]);
 
-
-        const parsedProperties = properties.map((property, index) => ({
+        const parsedProperty = [{
+            propertyId: property.id.toString(),
             owner: property.owner,
             title: property.name,
             description: property.description,
-            price: ethers.utils.formatEther(property.price.toString()),
-            rent: property.rent,
-            rentPeriod: property.rentPeriod,
+            price: property.price.toString(),
+            rent: property.rent.toString(),
+            rentPeriod: property.rentPeriod.toString(),
             image: property.images,
-            shares: property.totalShares,
-            AvailableShares: property.AvailableShares,
-            propertyAddress: property.propertyAddress
-        }))
-        return parsedProperties;
+            propertyAddress: property.propertyAddress,
+            shares: property.totalShares?.toString(),
+            AvailableShares: property.availableShares?.toString()
+
+        }];
+        if (!parsedProperty) {
+          throw new Error("Property not found");
+      }
+        return parsedProperty;
     } catch (err) {
-        console.error("contract call failure: ", err);
+        console.error("Error getting single property:", err);
+        return null;
     }
   }
 
@@ -255,18 +302,18 @@ const removeLiquidityFunction = async (amount) => {
 
   const getShareholderInfoFunction = async (propertyId) => {
     try {
-      const shareholdersinfo = await contract.call('getShareholderInfo', [propertyId, address])
-      const info = shareholdersinfo.map((property, index) => ({
-        shares: info.shares,
-        rentClaimed: info.rentClaimed,
-        UnclaimedRent: info.unclaimedRent
-      }))
-      return info
-    } catch {
-      console.error("Unable to fetch data")
-
+      const shareholderInfo = await contract.call('getShareholderInfo', [propertyId, address]);
+      // Contract returns a tuple of (shares, rentClaimed, unclaimedRent)
+      return [{
+        shares: shareholderInfo[0],        // shares
+        rentClaimed: shareholderInfo[1],   // rentClaimed
+        UnclaimedRent: shareholderInfo[2]  // unclaimedRent
+      }];
+    } catch (error) {
+      console.error("Unable to fetch data:", error);
+      return null;
     }
-  }
+  };
 
   //--------------------------------------------------------------
 
@@ -293,10 +340,21 @@ const removeLiquidityFunction = async (amount) => {
 
   const getShareholderPropertiesFunction = async () => {
     try {
-      const shareholderproperties = await contract.call('getShareholderProperties', [address])
-      return shareholderproperties
+        const shareholderproperties = await contract.call('getShareholderProperties', [address]);
+        const parsedProperties = shareholderproperties.map(property => ({
+            propertyId: property.id.toString(),
+            owner: property.owner,
+            title: property.name,
+            description: property.description,
+            price: property.price.toString(),
+            rent: property.rent.toString(),
+            rentPeriod: property.rentPeriod.toString(),
+            image: property.images,
+            propertyAddress: property.propertyAddress
+        }));
+        return parsedProperties;
     } catch (error) {
-      console.error("Couldn't fetch data")
+        console.error("Couldn't fetch data");
     }
   }
 
@@ -305,39 +363,55 @@ const removeLiquidityFunction = async (amount) => {
 
   const getOwnerPropertiesFunction = async () => {
     try {
-      const ownerProperties = await contract.call('getOwnerProperties', address)
-      return ownerProperties
+        const ownerProperties = await contract.call('getOwnerProperties', address);
+        const parsedProperties = ownerProperties.map(property => ({
+            propertyId: property.id.toString(),
+            owner: property.owner,
+            title: property.name,
+            description: property.description,
+            price: property.price.toString(),
+            rent: property.rent.toString(),
+            rentPeriod: property.rentPeriod.toString(),
+            image: property.images,
+            propertyAddress: property.propertyAddress
+        }));
+        return parsedProperties;
     } catch (error) {
-      console.error("Couldnt fetch data")
+        console.error("Couldn't fetch data");
     }
   }
 
-  return (
-    <AppContext.Provider value={{
-        address,
-        disconnect,
-        userBalance,
-        connect,
-        listPropertyFunction,
-        getPropertiesFunction,
-        updatePropertyFunction,
-        buySharesFunction,
-        sellSharesFunction,
-        addLiquidityFunction,
-        removeLiquidityFunction,
-        getLiquidityBalanceFunction,
-        payRentFunction,
-        claimRentFunction,
-        submitReviewFunction,
-        getSinglePropertyFunction,
-        removePropertyFunction,
-        getShareholderInfoFunction,
-        getPropertyReviewsFunction,
-        checkisRentDueFunction,
-      getShareholderPropertiesFunction,
 
-    }}>
-        {children}
+  const value = {
+    contract,
+    address,
+    disconnect,
+    signer,
+    userBalance,
+    connect,
+    listPropertyFunction,
+    getPropertiesFunction,
+    updatePropertyFunction,
+    buySharesFunction,
+    sellSharesFunction,
+    addLiquidityFunction,
+    removeLiquidityFunction,
+    getLiquidityBalanceFunction,
+    payRentFunction,
+    claimRentFunction,
+    submitReviewFunction,
+    getSinglePropertyFunction,
+    removePropertyFunction,
+    getShareholderInfoFunction,
+    getPropertyReviewsFunction,
+    checkisRentDueFunction,
+    getShareholderPropertiesFunction,
+    getOwnerPropertiesFunction,
+  };
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
     </AppContext.Provider>
   );
 };
