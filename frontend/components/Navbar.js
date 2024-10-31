@@ -2,27 +2,21 @@
 
 import Link from 'next/link';
 import styles from './Navbar.module.css';
-import { useAppContext } from '../context';
+import { useAppContext } from '@/context';
+import { useState, useRef, useEffect } from 'react';
 
 export default function Navbar() {
-  const { 
-    address, 
-    signer,
-    connect, 
-    disconnect, 
-    userBalance,
-  } = useAppContext();
-
+  const { address, userBalance, connect, disconnect } = useAppContext();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const menuRef = useRef(null);
 
   return (
     <nav className={styles.navbar}>
       <div className={styles.navContent}>
-        <div className={styles.navLeft}>
-          <Link href="/" className={styles.logo}>
-            PropertyShare
-          </Link>
-        </div>
-        
+        <Link href="/" className={styles.logo}>
+          RealEstate
+        </Link>
+
         <div className={styles.navLinks}>
           <Link href="/" className={styles.navLink}>
             Home
@@ -30,31 +24,50 @@ export default function Navbar() {
           <Link href="/listproperty" className={styles.navLink}>
             List Property
           </Link>
-          {address && (
-            <Link href="/dashboard" className={styles.navLink}>
-              Dashboard
-            </Link>
-          )}
-        </div>
-
-        <div className={styles.navRight}>
-          {address ? (
-            <div className={styles.userSection}>
-              <span className={styles.walletAddress}>
-                {`${address.slice(0, 6)}...${address.slice(-4)}`}
-              </span>
-              <span className={styles.balance}>
-                {userBalance ? `${Number(userBalance).toFixed(4)} ETH` : '0.0000 ETH'}
-              </span>
-              <button onClick={disconnect} className={styles.disconnectBtn}>
-                Disconnect
+          
+          <div className={styles.walletSection}>
+            {!address ? (
+              <button onClick={connect} className={styles.connectButton}>
+                Connect Wallet
               </button>
-            </div>
-          ) : (
-            <button onClick={connect} className={styles.connectBtn}>
-              Connect Wallet
-            </button>
-          )}
+            ) : (
+              <>
+                <div className={styles.walletInfo}>
+                  <span className={styles.balanceAmount}>{userBalance} ETH</span>
+                  <span className={styles.addressText}>
+                    {`${address.slice(0, 6)}...${address.slice(-4)}`}
+                  </span>
+                </div>
+                <div className={styles.profileContainer} ref={menuRef}>
+                  <button 
+                    className={styles.profileButton}
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  >
+                    <div className={styles.profileIcon}>
+                      {address.slice(0, 2)}
+                    </div>
+                  </button>
+
+                  {showProfileMenu && (
+                    <div className={styles.profileMenu}>
+                      <Link href="/mypropertylist" className={styles.menuItem}>
+                        My Properties
+                      </Link>
+                      <Link href="/profile/investments" className={styles.menuItem}>
+                        My Investments
+                      </Link>
+                      <button 
+                        onClick={disconnect} 
+                        className={styles.disconnectButton}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </nav>

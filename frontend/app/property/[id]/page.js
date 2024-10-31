@@ -8,7 +8,7 @@ import styles from './PropertyDetails.module.css';
 import Navbar from '../../../components/Navbar';
 
 export default function PropertyDetails() {
-  const { address,getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction } = useAppContext();
+  const { address,getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,6 +17,8 @@ export default function PropertyDetails() {
   const [totalCost, setTotalCost] = useState('0');
   const [shareholdersInfo, setShareholdersInfo] = useState([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRentDue, setIsRentDue] = useState(false);
+  const [rentPeriodStatus, setRentPeriodStatus] = useState(null);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -77,6 +79,44 @@ export default function PropertyDetails() {
     fetchShareholderInfo();
   }, [params.id, getShareholderInfoFunction]);
 
+  useEffect(() => {
+    const checkRentStatus = async () => {
+      if (params.id) {
+        try {
+          const rentDueStatus = await checkisRentDueFunction(params.id);
+          setIsRentDue(rentDueStatus);
+        } catch (error) {
+          console.error("Error checking rent status:", error);
+        }
+      }
+    };
+
+    checkRentStatus();
+  }, [params.id, checkisRentDueFunction]);
+
+  useEffect(() => {
+    const fetchRentPeriodStatus = async () => {
+      if (params.id) {
+        try {
+          const status = await getRentPeriodStatus(params.id);
+          setRentPeriodStatus(status);
+        } catch (error) {
+          console.error("Error fetching rent period status:", error);
+        }
+      }
+    };
+
+    fetchRentPeriodStatus();
+  }, [params.id, getRentPeriodStatus]);
+
+  const getRentDueText = () => {
+    if (!rentPeriodStatus) return "Loading...";
+    if (isRentDue) return "Claim Rent";
+    
+    const daysRemaining = Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60));
+    return `Rent due in ${daysRemaining} days`;
+  };
+
   const handleBuyShares = (e) => {
     e.preventDefault();
     buySharesFunction({
@@ -84,6 +124,52 @@ export default function PropertyDetails() {
       shares: sharesToBuy,
       price: totalCost.toString()
     });
+  };
+
+  const handleClaimRent = async () => {
+    try {
+      await claimRentFunction({
+        propertyId: params.id,
+        shareholder: address
+      });
+      // Refresh shareholder info after claiming
+      const updatedInfo = await getShareholderInfoFunction(params.id);
+      if (updatedInfo && Array.isArray(updatedInfo)) {
+        setShareholdersInfo(updatedInfo);
+      }
+    } catch (error) {
+      console.error("Error claiming rent:", error);
+    }
+  };
+
+  const handlePayRent = async () => {
+    try {
+      if (!property || !property.rent) {
+        throw new Error("Invalid property rent value");
+      }
+
+      // Make sure we're using the exact rent amount from the property
+      const rentAmount = property.rent;
+      console.log("Rent amount:", rentAmount.toString());
+
+      await payRentFunction({
+        propertyId: params.id,
+        rent: rentAmount // Pass the BigNumber directly
+      });
+
+      // Refresh property data after paying rent
+      const updatedProperty = await getSinglePropertyFunction(params.id);
+      if (updatedProperty && updatedProperty[0]) {
+        setProperty(updatedProperty[0]);
+      }
+
+      // Refresh rent status
+      const rentDueStatus = await checkisRentDueFunction(params.id);
+      setIsRentDue(rentDueStatus);
+
+    } catch (error) {
+      console.error("Error paying rent:", error);
+    }
   };
 
   if (isLoading || isInitialLoad) return (
@@ -127,6 +213,18 @@ export default function PropertyDetails() {
                   className={styles.propertyImage}
                 />
               )}
+              {property.owner === address && (
+                <div className={styles.ownerActions}>
+                  <button 
+                    onClick={handlePayRent}
+                    className={styles.payRentButton}
+                    disabled={!isRentDue}
+                    title={!isRentDue ? `Rent is not due yet` : "Click to pay rent"}
+                  >
+                    Pay Rent ({ethers.utils.formatEther(property.rent)} ETH)
+                  </button>
+                </div>
+              )}
             </div>
 
             {shareholdersInfo.length > 0 && address !== property.owner && (
@@ -153,6 +251,16 @@ export default function PropertyDetails() {
                             {holder.UnclaimedRent ? ethers.utils.formatEther(holder.UnclaimedRent) : '0'} ETH
                           </span>
                         </div>
+                        {holder.UnclaimedRent && ethers.BigNumber.from(holder.UnclaimedRent).gt(0) && (
+                          <button 
+                            onClick={handleClaimRent}
+                            className={styles.claimButton}
+                            disabled={!isRentDue}
+                            title={!isRentDue ? `Rent will be due in ${Math.ceil(rentPeriodStatus?.remainingTime / (24 * 60 * 60))} days` : "Click to claim your rent"}
+                          >
+                            {getRentDueText()}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

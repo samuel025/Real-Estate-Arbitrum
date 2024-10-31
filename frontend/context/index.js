@@ -23,7 +23,7 @@ export const useAppContext = () => {
 };
 
 export const AppProvider = ({children}) => {
-  const {contract} = useContract("0xAf2Edb0699a14e3d5E72869393d30eA94f7DfE06")
+  const {contract} = useContract("0x5a290E063fdd2af565283dd9942f1419496d5c9D")
 
   const address = useAddress();
   const connect = useMetamask()
@@ -37,7 +37,8 @@ export const AppProvider = ({children}) => {
         try {
           const balance = await signer.getBalance();
           // Convert balance from wei to ETH and set it in state
-          setUserBalance(ethers.utils.formatEther(balance));
+          const formattedBalance = parseFloat(ethers.utils.formatEther(balance)).toFixed(3); // Limit to 3 decimal places
+          setUserBalance(formattedBalance);
         } catch (error) {
           console.error("Error fetching balance:", error);
           setUserBalance("0");
@@ -206,19 +207,39 @@ const removeLiquidityFunction = async (amount) => {
 
   //--------------------------------------------------------
 
-  const {mutateAsync: payRent} = useContractWrite(contract, "payRent");
+  const {mutateAsync: payRent} = useContractWrite(contract, "payRent")
+
   const payRentFunction = async (formData) => {
-    const {propertyId, amount, payer} = formData;
+    const {propertyId, rent} = formData;
     try {
+      console.log("Starting rent payment:", {
+        propertyId,
+        address,
+        rentAmount: rent.toString()
+      });
+
       const data = await payRent({
-        args: [propertyId, payer],
+        args: [propertyId, address],
         overrides: {
-          value: ethers.utils.parseEther(amount)
+          value: rent,
+          gasLimit: 500000 // Add explicit gas limit
         }
       });
-      console.info("contract call success", data);
+
+      // Wait for transaction to be mined
+      const receipt = await data.wait();
+      console.log("Transaction receipt:", receipt);
+      
+      return receipt;
     } catch (error) {
-      console.error("contract call failure", error);
+      console.error("Detailed error:", error);
+      if (error.reason) {
+        throw new Error(error.reason);
+      } else if (error.data?.message) {
+        throw new Error(error.data.message);
+      } else {
+        throw new Error("Failed to pay rent. Please check if rent is due and you have enough ETH.");
+      }
     }
   }
 
@@ -363,24 +384,48 @@ const removeLiquidityFunction = async (amount) => {
 
   const getOwnerPropertiesFunction = async () => {
     try {
-        const ownerProperties = await contract.call('getOwnerProperties', address);
+        if (!address) return [];
+        
+        console.log("Fetching properties for address:", address);
+        const ownerProperties = await contract.call('getOwnerProperties', [address]);
+        console.log("Raw owner properties:", ownerProperties);
+        
         const parsedProperties = ownerProperties.map(property => ({
             propertyId: property.id.toString(),
             owner: property.owner,
-            title: property.name,
+            name: property.name,
             description: property.description,
             price: property.price.toString(),
             rent: property.rent.toString(),
             rentPeriod: property.rentPeriod.toString(),
-            image: property.images,
-            propertyAddress: property.propertyAddress
+            images: property.images,
+            propertyAddress: property.propertyAddress,
+            shares: property.totalShares?.toString(),
+            availableShares: property.availableShares?.toString()
         }));
+        
+        console.log("Parsed properties:", parsedProperties);
         return parsedProperties;
     } catch (error) {
-        console.error("Couldn't fetch data");
+        console.error("Error in getOwnerPropertiesFunction:", error);
+        throw error;
     }
   }
 
+  const getRentPeriodStatus = async (propertyId) => {
+    try {
+      const status = await contract.call('getRentPeriodStatus', [propertyId]);
+      return {
+        periodStart: new Date(status.periodStart * 1000),
+        periodEnd: new Date(status.periodEnd * 1000),
+        isActive: status.isActive,
+        remainingTime: Number(status.remainingTime)
+      };
+    } catch (error) {
+      console.error("Error getting rent period status:", error);
+      throw error;
+    }
+  };
 
   const value = {
     contract,
@@ -407,6 +452,7 @@ const removeLiquidityFunction = async (amount) => {
     checkisRentDueFunction,
     getShareholderPropertiesFunction,
     getOwnerPropertiesFunction,
+    getRentPeriodStatus,
   };
 
   return (

@@ -1,17 +1,21 @@
 .navbar {
-  background-color: #ffffff;
+  background-color: white;
+  padding: 1rem 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
+  height: 70px;
+  display: flex;
+  align-items: center;
 }
 
 .navContent {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 1rem 2rem;
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -20,71 +24,201 @@
 .logo {
   font-size: 1.5rem;
   font-weight: bold;
-  color: #2563eb;
+  color: #333;
   text-decoration: none;
 }
 
 .navLinks {
   display: flex;
+  align-items: center;
   gap: 2rem;
 }
 
 .navLink {
+  color: #666;
   text-decoration: none;
-  color: #4b5563;
   font-weight: 500;
   transition: color 0.2s;
 }
 
 .navLink:hover {
-  color: #2563eb;
+  color: #333;
 }
 
-.userSection {
+.walletSection {
   display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-left: 1.5rem;
+  padding-left: 1.5rem;
+  border-left: 1px solid #eef2f6;
+}
+
+.walletInfo {
+  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 1rem;
 }
 
-.balance {
-  background: #f3f4f6;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  color: #4b5563;
+.balanceAmount {
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  background-color: #f0f8ff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  min-width: 90px;
+  text-align: right;
 }
 
-.connectBtn, .disconnectBtn {
-  padding: 0.5rem 1.5rem;
-  border-radius: 9999px;
-  font-weight: 500;
-  transition: all 0.2s;
+.addressText {
+  font-family: monospace;
+  font-size: 0.95rem;
+  color: #666;
+  background-color: #f8f9fa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Profile styles */
+.profileContainer {
+  position: relative;
+}
+
+.profileButton {
+  background: none;
   border: none;
   cursor: pointer;
+  padding: 0;
 }
 
-.connectBtn {
-  background-color: #2563eb;
+.profileIcon {
+  width: 36px;
+  height: 36px;
+  background-color: #e8f4ff;
+  border: 2px solid #007bff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #007bff;
+  transition: all 0.2s ease;
+}
+
+.profileIcon:hover {
+  background-color: #007bff;
   color: white;
 }
 
-.connectBtn:hover {
-  background-color: #1d4ed8;
+.profileMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  padding: 0.5rem;
+  z-index: 1000;
 }
 
-.disconnectBtn {
-  background-color: #ef4444;
-  color: white;
-}
-
-.disconnectBtn:hover {
-  background-color: #dc2626;
-}
-
-.walletAddress {
-  font-family: monospace;
-  background: rgba(0, 0, 0, 0.1);
-  padding: 4px 8px;
+.menuItem {
+  display: block;
+  padding: 0.75rem 1rem;
+  color: #333;
+  text-decoration: none;
   border-radius: 4px;
-  margin-right: 10px;
+  transition: all 0.2s ease;
+}
+
+.menuItem:hover {
+  background-color: #f8f9fa;
+}
+
+/* Button styles */
+.connectButton {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.connectButton:hover {
+  background-color: #0056b3;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 123, 255, 0.3);
+}
+
+.disconnectButton {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.75rem 1rem;
+  color: #dc3545;
+  cursor: pointer;
+  font-size: 0.95rem;
+  border-top: 1px solid #eef2f6;
+  margin-top: 0.5rem;
+  border-radius: 4px;
+}
+
+.disconnectButton:hover {
+  background-color: #fff5f5;
+}
+
+/* Responsive styles */
+@media (max-width: 1024px) {
+  .walletSection {
+    margin-left: 1rem;
+    padding-left: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    height: auto;
+    padding: 1rem;
+  }
+
+  .navContent {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .navLinks {
+    flex-direction: column;
+    width: 100%;
+    gap: 1rem;
+  }
+
+  .walletSection {
+    flex-direction: column;
+    width: 100%;
+    margin: 0;
+    padding: 1rem 0 0 0;
+    border-left: none;
+    border-top: 1px solid #eef2f6;
+  }
+
+  .walletInfo {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .connectButton, .disconnectButton {
+    width: 100%;
+  }
 } 
