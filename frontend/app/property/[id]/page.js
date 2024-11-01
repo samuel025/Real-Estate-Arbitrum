@@ -5,20 +5,24 @@ import { useAppContext } from '../../../context';
 import { useParams } from 'next/navigation';
 import { ethers } from 'ethers';
 import styles from './PropertyDetails.module.css';
-import Navbar from '../../../components/Navbar';
+import Navbar from '@/components/Navbar';
+import ReviewModal from '@/components/ReviewModal';
+import Link from 'next/link';
 
 export default function PropertyDetails() {
-  const { address,getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dataFetched, setDataFetched] = useState(false);
   const params = useParams();
   const [sharesToBuy, setSharesToBuy] = useState(1);
   const [totalCost, setTotalCost] = useState('0');
   const [shareholdersInfo, setShareholdersInfo] = useState([]);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isRentDue, setIsRentDue] = useState(false);
   const [rentPeriodStatus, setRentPeriodStatus] = useState(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviews, setReviews] = useState([]);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -41,73 +45,63 @@ export default function PropertyDetails() {
   }, [sharesToBuy, property?.price]);
 
   useEffect(() => {
-    const fetchProperty = async () => {
+    let mounted = true;
+
+    const fetchAllData = async () => {
+      if (!params.id || !contract) return;
+      
       try {
         setIsLoading(true);
         setError(null);
-        const data = await getSinglePropertyFunction(params.id);
-        if (data && data[0]) {
-          setProperty(data[0]);
-        } 
+
+        // Fetch all data in parallel
+        const [propertyData, shareholderInfo, rentDueStatus, periodStatus, reviewsData] = await Promise.all([
+          getSinglePropertyFunction(params.id),
+          getShareholderInfoFunction(params.id),
+          checkisRentDueFunction(params.id),
+          getRentPeriodStatus(params.id),
+          getPropertyReviewsFunction(params.id)
+        ]);
+
+        console.log('Reviews Data:', reviewsData);
+
+        if (!mounted) return;
+
+        if (!propertyData || !propertyData[0]) {
+          setError('Property not found');
+          return;
+        }
+
+        setProperty(propertyData[0]);
+
+        // Fetch additional data only if property exists
+        setShareholdersInfo(shareholderInfo || []);
+        setIsRentDue(rentDueStatus);
+        setRentPeriodStatus(periodStatus);
+
+        // Add reviews state update
+        setReviews(reviewsData || []);
+
+        console.log('Set Reviews:', reviewsData);
       } catch (err) {
-        setError(err.message || "Failed to load property");
+        if (mounted) {
+          console.error("Error fetching data:", err);
+          setError(err.message || "Failed to load property");
+        }
       } finally {
-        setIsLoading(false);
-        setIsInitialLoad(false);
-      }
-    };
-
-    if (params.id) {
-      fetchProperty();
-    }
-  }, [params.id, getSinglePropertyFunction]);
-
-  useEffect(() => {
-    const fetchShareholderInfo = async () => {
-      if (params.id) {
-        try {
-          const info = await getShareholderInfoFunction(params.id);
-          if (info && Array.isArray(info)) {
-            setShareholdersInfo(info);
-          }
-        } catch (error) {
-          console.error("Error fetching shareholder info:", error);
+        if (mounted) {
+          setIsLoading(false);
+          setDataFetched(true);
         }
       }
     };
 
-    fetchShareholderInfo();
-  }, [params.id, getShareholderInfoFunction]);
+    fetchAllData();
 
-  useEffect(() => {
-    const checkRentStatus = async () => {
-      if (params.id) {
-        try {
-          const rentDueStatus = await checkisRentDueFunction(params.id);
-          setIsRentDue(rentDueStatus);
-        } catch (error) {
-          console.error("Error checking rent status:", error);
-        }
-      }
+    return () => {
+      mounted = false;
     };
-
-    checkRentStatus();
-  }, [params.id, checkisRentDueFunction]);
-
-  useEffect(() => {
-    const fetchRentPeriodStatus = async () => {
-      if (params.id) {
-        try {
-          const status = await getRentPeriodStatus(params.id);
-          setRentPeriodStatus(status);
-        } catch (error) {
-          console.error("Error fetching rent period status:", error);
-        }
-      }
-    };
-
-    fetchRentPeriodStatus();
-  }, [params.id, getRentPeriodStatus]);
+  }, [params.id, contract, getSinglePropertyFunction, getShareholderInfoFunction, checkisRentDueFunction, getRentPeriodStatus]);
 
   const getRentDueText = () => {
     if (!rentPeriodStatus) return "Loading...";
@@ -172,32 +166,51 @@ export default function PropertyDetails() {
     }
   };
 
-  if (isLoading || isInitialLoad) return (
-    <>
-      <Navbar />
-      <div className={styles.container}>
-        <div className={styles.loadingSpinner}>Loading...</div>
-      </div>
-    </>
-  );
+  const handleReviewSubmit = async (rating, comment) => {
+    try {
+      await submitReviewFunction({
+        propertyId: params.id,
+        rating,
+        comment
+      });
+      // Optionally refresh reviews here
+    } catch (error) {
+      console.error("Error submitting review:", error);
+    }
+  };
 
-  if (error) return (
-    <>
-      <Navbar />
-      <div className={styles.container}>
-        <div className={styles.error}>Error: {error}</div>
-      </div>
-    </>
-  );
+  if (isLoading || !dataFetched) {
+    return (
+      <>
+        <Navbar />
+        <div className={styles.container}>
+          <div className={styles.loadingSpinner}>Loading...</div>
+        </div>
+      </>
+    );
+  }
 
-  if (!property && !isInitialLoad) return (
-    <>
-      <Navbar />
-      <div className={styles.container}>
-        <div className={styles.error}>Property not found</div>
-      </div>
-    </>
-  );
+  if (error && dataFetched) {
+    return (
+      <>
+        <Navbar />
+        <div className={styles.container}>
+          <div className={styles.error}>{error}</div>
+        </div>
+      </>
+    );
+  }
+
+  if (!property && dataFetched) {
+    return (
+      <>
+        <Navbar />
+        <div className={styles.container}>
+          <div className={styles.error}>Property not found</div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -229,11 +242,11 @@ export default function PropertyDetails() {
 
             {shareholdersInfo.length > 0 && address !== property.owner && (
               <div className={styles.shareholderSection}>
-                <h3>Shareholders Information</h3>
+                <h3>Your Shares</h3>
                 <div className={styles.shareholdersGrid}>
                   {shareholdersInfo.map((holder, index) => (
                     <div key={index} className={styles.shareholderCard}>
-                      <h4>Shareholder {index + 1}</h4>
+                      <h4>Information</h4>
                       <div className={styles.shareholderInfo}>
                         <div className={styles.detailItem}>
                           <span className={styles.label}>Shares Owned:</span>
@@ -265,8 +278,48 @@ export default function PropertyDetails() {
                     </div>
                   ))}
                 </div>
+                
+                <div className={styles.reviewSection}>
+                  <button 
+                    onClick={() => setIsReviewModalOpen(true)}
+                    className={styles.reviewButton}
+                  >
+                    Write a Review
+                  </button>
+                </div>
               </div>
             )}
+
+            <div className={styles.reviewsSection}>
+              <h3>Property Reviews</h3>
+              {reviews && reviews.length > 0 ? (
+                <div className={styles.reviewsGrid}>
+                  {reviews.map((review, index) => (
+                    <div key={index} className={styles.reviewCard}>
+                      <div className={styles.reviewRating}>
+                        {[...Array(parseInt(review.rating))].map((_, i) => (
+                          <span key={i} className={`${styles.star} ${styles.filled}`}>★</span>
+                        ))}
+                        {[...Array(5 - parseInt(review.rating))].map((_, i) => (
+                          <span key={i} className={styles.star}>★</span>
+                        ))}
+                      </div>
+                      <p className={styles.reviewComment}>{review.comment}</p>
+                      <div className={styles.reviewFooter}>
+                        <span className={styles.reviewerAddress}>
+                          {`${review.reviewer.slice(0, 6)}...${review.reviewer.slice(-4)}`}
+                        </span>
+                        <span className={styles.reviewDate}>
+                          {new Date(Number(review.timestamp) * 1000).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.noReviews}>No reviews yet.</p>
+              )}
+            </div>
           </div>
 
           <div className={styles.rightColumn}>
@@ -302,6 +355,15 @@ export default function PropertyDetails() {
                         <span className={styles.label}>Owner:</span>
                         <span className={styles.address}>{property.owner}</span>
                       </div>
+                      
+                      {property.owner === address && (
+                        <Link 
+                          href={`/update/${property.propertyId}`}
+                          className={styles.updateButton}
+                        >
+                          Update Property Details
+                        </Link>
+                      )}
                     </div>
                   </div>
 
@@ -376,6 +438,12 @@ export default function PropertyDetails() {
           </div>
         </div>
       </div>
+      
+      <ReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        onSubmit={handleReviewSubmit}
+      />
     </>
   );
 }

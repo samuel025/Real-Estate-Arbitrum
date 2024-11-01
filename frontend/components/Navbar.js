@@ -53,7 +53,7 @@ export default function Navbar() {
                       <Link href="/mypropertylist" className={styles.menuItem}>
                         My Properties
                       </Link>
-                      <Link href="/profile/investments" className={styles.menuItem}>
+                      <Link href="/myinvestments" className={styles.menuItem}>
                         My Investments
                       </Link>
                       <button 

@@ -17,6 +17,8 @@ contract RealEstateTokenization {
     error TransferFailed();
     error InsufficientLiquidity();
     error InvalidLiquidityAmount();
+    error RentPeriodNotEnded();
+    error RentReturnFailed(uint256 propertyId, address owner, uint256 amount);
 
     struct Property {
         uint256 id;
@@ -78,6 +80,7 @@ contract RealEstateTokenization {
     event LiquidityAdded(address indexed provider, uint256 amount);
     event LiquidityRemoved(address indexed provider, uint256 amount);
     event FeesCollected(uint256 amount);
+    event UnclaimedRentReturned(uint256 indexed propertyId, address indexed owner, uint256 amount);
 
 
     // Modifiers
@@ -312,15 +315,38 @@ contract RealEstateTokenization {
     ) external payable propertyExists(_propertyId) {
         Property storage property = properties[_propertyId];
 
-        // Convert days to seconds for timestamp comparison
-        if (block.timestamp < property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY))
+        // Check if this is a new rent period or if the previous period has ended
+        bool isNewRentPeriod = block.timestamp >= property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
+        
+        // If it's not a new period and rent was already paid, revert
+        if (!isNewRentPeriod && property.lastRentPayment != 0) {
             revert RentAlreadyPaidForPeriod();
+        }
+
+        // Check if there's unclaimed rent from previous period
+        if (isNewRentPeriod && property.rentPool > 0) {
+            // Transfer unclaimed rent to owner
+            uint256 unclaimedRent = property.rentPool;
+            property.rentPool = 0;
+            
+            (bool success, ) = property.owner.call{value: unclaimedRent}("");
+            if (!success) revert TransferFailed();
+            
+            emit UnclaimedRentReturned(_propertyId, property.owner, unclaimedRent);
+        }
 
         if (msg.value < property.rent)
             revert InvalidAmount();
 
-        property.rentPool += msg.value;
-        property.lastRentPayment = block.timestamp;
+        // Reset rent claimed amounts for all shareholders when starting new period
+        if (isNewRentPeriod) {
+            property.rentPool = msg.value;
+            property.lastRentPayment = block.timestamp;
+        } else {
+            property.rentPool += msg.value;
+            property.lastRentPayment = block.timestamp;
+        }
+        
         property.totalRentCollected += msg.value;
 
         emit RentPaid(_propertyId, _payer, msg.value, block.timestamp);
@@ -337,9 +363,19 @@ contract RealEstateTokenization {
         Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
         Property storage property = properties[_propertyId];
 
+        // Check if shareholder owns any shares
         if (shareholder.sharesOwned == 0)
             revert InsufficientShares();
 
+        // Check if we're within the current rent period
+        bool isWithinCurrentPeriod = block.timestamp <= property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
+        
+        // Only allow claims during the rent period
+        if (!isWithinCurrentPeriod) {
+            revert RentPeriodNotEnded();
+        }
+
+        // Calculate entitled rent for the current period
         uint256 shareholderPercentage = (shareholder.sharesOwned * PRECISION) / property.totalShares;
         uint256 totalEntitledRent = (property.rentPool * shareholderPercentage) / PRECISION;
         uint256 unclaimedRent = totalEntitledRent - shareholder.rentClaimed;
@@ -507,6 +543,33 @@ contract RealEstateTokenization {
         }
         
         return ownerProperties;
+    }
+
+    // Add a function to get the current rent period status
+    function getRentPeriodStatus(uint256 _propertyId) 
+        external 
+        view 
+        propertyExists(_propertyId) 
+        returns (
+            uint256 periodStart,
+            uint256 periodEnd,
+            bool isActive,
+            uint256 remainingTime
+        ) 
+    {
+        Property storage property = properties[_propertyId];
+        
+        periodStart = property.lastRentPayment;
+        periodEnd = property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
+        isActive = block.timestamp <= periodEnd;
+        
+        if (isActive) {
+            remainingTime = periodEnd - block.timestamp;
+        } else {
+            remainingTime = 0;
+        }
+        
+        return (periodStart, periodEnd, isActive, remainingTime);
     }
 
     receive() external payable {}

@@ -340,12 +340,25 @@ const removeLiquidityFunction = async (amount) => {
 
   const getPropertyReviewsFunction = async (propertyId) => {
     try {
-      const reviewdata = await contract.call('getPropertyReviews', [propertyId])
-      return reviewdata
-    } catch {
-      console.error("colud not fetch the data")
+      const reviewData = await contract.call('getPropertyReviews', [propertyId]);
+      console.log('Raw review data:', reviewData);
+      
+      if (!reviewData) return [];
+      
+      const parsedReviews = reviewData.map(review => ({
+        reviewer: review.reviewer,
+        rating: review.rating.toString(),
+        comment: review.comment,
+        timestamp: review.timestamp.toString()
+      }));
+      
+      console.log('Parsed reviews:', parsedReviews);
+      return parsedReviews;
+    } catch (error) {
+      console.error("Could not fetch reviews:", error);
+      return [];
     }
-  }
+  };
 
   const checkisRentDueFunction = async (propertyId) => {
     try{
