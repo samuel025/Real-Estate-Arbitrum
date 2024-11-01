@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useAppContext } from '../../../context';
 import { useParams } from 'next/navigation';
 import { ethers } from 'ethers';
@@ -10,7 +10,7 @@ import ReviewModal from '@/components/ReviewModal';
 import Link from 'next/link';
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, sellSharesFunction } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,6 +23,9 @@ export default function PropertyDetails() {
   const [rentPeriodStatus, setRentPeriodStatus] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviews, setReviews] = useState([]);
+  const [hasReviewed, setHasReviewed] = useState([]);
+  const [sharesToSell, setSharesToSell] = useState(1);
+  const [sellError, setSellError] = useState('');
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -82,7 +85,9 @@ export default function PropertyDetails() {
         // Add reviews state update
         setReviews(reviewsData || []);
 
-        console.log('Set Reviews:', reviewsData);
+        const userReviewExists = reviewsData?.some(review => review?.reviewer?.toLowerCase() === address?.toLowerCase());
+        setHasReviewed(userReviewExists);
+        
       } catch (err) {
         if (mounted) {
           console.error("Error fetching data:", err);
@@ -108,7 +113,7 @@ export default function PropertyDetails() {
     if (isRentDue) return "Claim Rent";
     
     const daysRemaining = Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60));
-    return `Rent due in ${daysRemaining} days`;
+    return `Rent due for claim in ${daysRemaining} days`;
   };
 
   const handleBuyShares = (e) => {
@@ -120,13 +125,13 @@ export default function PropertyDetails() {
     });
   };
 
+
   const handleClaimRent = async () => {
     try {
       await claimRentFunction({
         propertyId: params.id,
         shareholder: address
       });
-      // Refresh shareholder info after claiming
       const updatedInfo = await getShareholderInfoFunction(params.id);
       if (updatedInfo && Array.isArray(updatedInfo)) {
         setShareholdersInfo(updatedInfo);
@@ -141,17 +146,12 @@ export default function PropertyDetails() {
       if (!property || !property.rent) {
         throw new Error("Invalid property rent value");
       }
-
-      // Make sure we're using the exact rent amount from the property
       const rentAmount = property.rent;
-      console.log("Rent amount:", rentAmount.toString());
-
       await payRentFunction({
         propertyId: params.id,
-        rent: rentAmount // Pass the BigNumber directly
+        rent: rentAmount 
       });
 
-      // Refresh property data after paying rent
       const updatedProperty = await getSinglePropertyFunction(params.id);
       if (updatedProperty && updatedProperty[0]) {
         setProperty(updatedProperty[0]);
@@ -173,11 +173,29 @@ export default function PropertyDetails() {
         rating,
         comment
       });
-      // Optionally refresh reviews here
     } catch (error) {
       console.error("Error submitting review:", error);
     }
   };
+
+  const handleSellShares = async (e) => {
+    e.preventDefault();
+    setSellError('');
+    try {
+      await sellSharesFunction({
+        propertyId: property.propertyId,
+        shares: sharesToSell,
+        seller: address
+      });
+    } catch (error) {
+       if(error.reason.includes("InsufficientLiquidity")){
+        setSellError("Insufficient Liquidity in the pool")
+       }
+    }
+  };
+  // Check if the user has shares
+  const userShares = shareholdersInfo.map((holder, index) => holder?.shares);
+
 
   if (isLoading || !dataFetched) {
     return (
@@ -280,12 +298,14 @@ export default function PropertyDetails() {
                 </div>
                 
                 <div className={styles.reviewSection}>
-                  <button 
+                {!hasReviewed && (
+                <button 
                     onClick={() => setIsReviewModalOpen(true)}
                     className={styles.reviewButton}
                   >
                     Write a Review
                   </button>
+                )}
                 </div>
               </div>
             )}
@@ -321,6 +341,8 @@ export default function PropertyDetails() {
               )}
             </div>
           </div>
+
+          
 
           <div className={styles.rightColumn}>
             <div className={styles.contentSection}>
@@ -433,8 +455,40 @@ export default function PropertyDetails() {
                     </form>
                   </div>
                 )}
+                {property.owner !== address && address && userShares > 0 && ( // Only show if user has shares
+                  <div className={styles.sellSection}>
+                    {sellError && <div className={styles.errorMessage}>{sellError}</div>}
+                    <h3>Sell Shares</h3>
+                    <form onSubmit={handleSellShares} className={styles.sellSharesForm}>
+                      <div className={styles.formGroup}>
+                        <label htmlFor="sharesToSell">Number of Shares:</label>
+                        <input
+                          type="number"
+                          id="sharesToSell"
+                          min="1"
+                          max={userShares} // Limit input to user's shares
+                          value={sharesToSell}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || value === '0') {
+                              setSharesToSell(''); // Reset if empty or zero
+                            } else {
+                              setSharesToSell(Math.min(Math.max(1, parseInt(value)), userShares)); // Ensure at least 1 and not more than available shares
+                            }
+                          }}
+                          required
+                          className={styles.inputField} // Add a class for styling
+                        />
+                      </div>
+                      <button type="submit" className={styles.sellButton}>
+                        Sell Shares
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -444,6 +498,10 @@ export default function PropertyDetails() {
         onClose={() => setIsReviewModalOpen(false)}
         onSubmit={handleReviewSubmit}
       />
+
+      
+
+      
     </>
   );
 }

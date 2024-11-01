@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import styles from './Navbar.module.css';
 import { useAppContext } from '@/context';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
+import { FaUserCircle } from 'react-icons/fa'
 
 export default function Navbar() {
   const { address, userBalance, connect, disconnect } = useAppContext();
@@ -44,7 +45,8 @@ export default function Navbar() {
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
                   >
                     <div className={styles.profileIcon}>
-                      {address.slice(0, 2)}
+                      {/* {address.slice(0, 2)} */}
+                      <FaUserCircle  />
                     </div>
                   </button>
 

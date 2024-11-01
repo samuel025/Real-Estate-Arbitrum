@@ -684,3 +684,52 @@
 .updateButton:active {
   transform: translateY(0);
 }
+
+
+.sellSection {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+.sellSharesForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.formGroup {
+  margin-bottom: 15px;
+}
+
+.inputField {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.sellButton {
+  padding: 10px;
+  background-color: #0070f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.sellButton:hover {
+  background-color: #005bb5;
+}
+
+.errorMessage {
+  color: red; /* Set the text color to red */
+  background-color: #ffe6e6; /* Light red background for better visibility */
+  border: 1px solid red; /* Red border */
+  padding: 10px; /* Add some padding */
+  border-radius: 5px; /* Rounded corners */
+  margin: 10px 0; /* Margin for spacing */
+  font-weight: bold; /* Make the text bold */
+}

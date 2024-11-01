@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useState, useEffect } from 'react';
 import { useAppContext } from '../../context';
@@ -6,6 +6,7 @@ import { ethers } from 'ethers';
 import styles from './MyPropertyList.module.css';
 import Navbar from '../../components/Navbar';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function MyPropertyList() {
     const { address, getOwnerPropertiesFunction, connect } = useAppContext();
@@ -17,19 +18,20 @@ export default function MyPropertyList() {
         const fetchProperties = async () => {
             if (address) {
                 setIsLoading(true);
+                setError(''); // Clear previous errors before loading
+
                 try {
-                    console.log("Fetching properties for address:", address);
                     const fetchedProperties = await getOwnerPropertiesFunction();
-                    console.log("Fetched properties:", fetchedProperties);
                     if (fetchedProperties) {
                         setProperties(fetchedProperties);
+                    } else {
+                        setProperties([]);
                     }
-                    setError('');
                 } catch (err) {
                     console.error("Error fetching properties:", err);
                     setError('Failed to load properties');
                 } finally {
-                    setIsLoading(false);
+                    setIsLoading(false); // Only stop loading once all is complete
                 }
             } else {
                 setProperties([]);
@@ -69,64 +71,72 @@ export default function MyPropertyList() {
                     </Link>
                 </div>
 
-                {error && <div className={styles.error}>{error}</div>}
-
                 {isLoading ? (
-                    <div className={styles.loading}>Loading your properties...</div>
-                ) : properties && properties.length > 0 ? (
-                    <div className={styles.propertiesGrid}>
-                        {properties.map((property) => (
-                            <div key={property.propertyId} className={styles.propertyCard}>
-                                <div className={styles.propertyImageContainer}>
-                                    <img 
-                                        src={property.image || property.images} 
-                                        alt={property.title || property.name}
-                                        className={styles.propertyImage}
-                                    />
-                                </div>
-                                <div className={styles.propertyInfo}>
-                                    <h3>{property.title || property.name}</h3>
-                                    <div className={styles.propertyDetails}>
-                                        <div className={styles.detailItem}>
-                                            <span className={styles.label}>Price:</span>
-                                            <span className={styles.value}>
-                                                {ethers.utils.formatEther(property.price)} ETH
-                                            </span>
-                                        </div>
-                                        <div className={styles.detailItem}>
-                                            <span className={styles.label}>Monthly Rent:</span>
-                                            <span className={styles.value}>
-                                                {ethers.utils.formatEther(property.rent)} ETH
-                                            </span>
-                                        </div>
-                                        <div className={styles.detailItem}>
-                                            <span className={styles.label}>Location:</span>
-                                            <span className={styles.value}>
-                                                {property.propertyAddress}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className={styles.cardActions}>
-                                        <Link 
-                                            href={`/property/${property.propertyId}`}
-                                            className={styles.viewButton}
-                                        >
-                                            View Details
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                    <div className={styles.loadingContainer}>
+                        <LoadingSpinner />
                     </div>
                 ) : (
-                    <div className={styles.noProperties}>
-                        <p>You haven't listed any properties yet.</p>
-                        <Link href="/listproperty" className={styles.listPropertyButton}>
-                            List Your First Property
-                        </Link>
-                    </div>
+                    <>
+                        {/* {error && <div className={styles.error}>{error}</div>} */}
+
+                        {properties && properties.length > 0 ? (
+                            <div className={styles.propertiesGrid}>
+                                {properties.map((property) => (
+                                    <div key={property.propertyId} className={styles.propertyCard}>
+                                        <div className={styles.propertyImageContainer}>
+                                            <img 
+                                                src={property.image || property.images} 
+                                                alt={property.title || property.name}
+                                                className={styles.propertyImage}
+                                            />
+                                        </div>
+                                        <div className={styles.propertyInfo}>
+                                            <h3>{property.title || property.name}</h3>
+                                            <div className={styles.propertyDetails}>
+                                                <div className={styles.detailItem}>
+                                                    <span className={styles.label}>Price:</span>
+                                                    <span className={styles.value}>
+                                                        {ethers.utils.formatEther(property.price)} ETH
+                                                    </span>
+                                                </div>
+                                                <div className={styles.detailItem}>
+                                                    <span className={styles.label}>Monthly Rent:</span>
+                                                    <span className={styles.value}>
+                                                        {ethers.utils.formatEther(property.rent)} ETH
+                                                    </span>
+                                                </div>
+                                                <div className={styles.detailItem}>
+                                                    <span className={styles.label}>Location:</span>
+                                                    <span className={styles.value}>
+                                                        {property.propertyAddress}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className={styles.cardActions}>
+                                                <Link 
+                                                    href={`/property/${property.propertyId}`}
+                                                    className={styles.viewButton}
+                                                >
+                                                    View Details
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            !error && (
+                                <div className={styles.noProperties}>
+                                    <p>You haven't listed any properties yet.</p>
+                                    <Link href="/listproperty" className={styles.listPropertyButton}>
+                                        List Your First Property
+                                    </Link>
+                                </div>
+                            )
+                        )}
+                    </>
                 )}
             </div>
         </>
     );
-} 
+}

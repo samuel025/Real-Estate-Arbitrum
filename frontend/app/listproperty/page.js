@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
 import styles from './ListProperty.module.css';
 import Navbar from '../../components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function ListProperty() {
     const { address, listPropertyFunction, connect } = useAppContext();
@@ -55,7 +56,7 @@ export default function ListProperty() {
 
             if (formData.price <= 0 || formData.rent <= 0 || 
                 formData.totalShares <= 0 || formData.rentPeriod <= 0) {
-                throw new Error("Numeric values must be greater than 0");
+                throw new Error("Must be greater than 0");
             }
 
             await listPropertyFunction(
@@ -222,7 +223,12 @@ export default function ListProperty() {
                         className={styles.submitButton}
                         disabled={isLoading}
                     >
-                        {isLoading ? 'Listing Property...' : 'List Property'}
+                        {isLoading ?  <>
+                                            <Navbar />
+                                            <div className={styles.loadingContainer}>
+                                            <LoadingSpinner />
+                                            </div>
+                                      </> : 'List Property'}
                     </button>
                 </form>
             </div>

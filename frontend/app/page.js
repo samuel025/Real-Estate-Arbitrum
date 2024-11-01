@@ -6,12 +6,11 @@ import { useEffect, useState } from "react";
 import Link from 'next/link';
 import { ethers } from 'ethers';
 import Navbar from '../components/Navbar';
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function Home() {
   const { 
-    address,
     contract,
-    buySharesFunction,
     getPropertiesFunction,
   } = useAppContext();
 
@@ -26,6 +25,7 @@ export default function Home() {
   }
 
   useEffect(() => {
+    setIsLoading(true)
     if(contract) fetchProperties();
   }, [contract]);
 
@@ -36,7 +36,9 @@ export default function Home() {
         <h1>Available Properties</h1>
         
         {isLoading ? (
-          <p className={styles.loadingText}>Loading properties...</p>
+          <div className={styles.loadingContainer}>
+            <LoadingSpinner />
+          </div>
         ) : (
           <div className={styles.propertiesGrid}>
             {properties?.map((property) => (

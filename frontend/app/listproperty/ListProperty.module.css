@@ -4,6 +4,15 @@
   padding: 2rem;
 }
 
+.loadingContainer{
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  margin-top: 80px;
+  position: relative;
+  z-index: 1;
+}
+
 .header {
   display: flex;
   justify-content: space-between;

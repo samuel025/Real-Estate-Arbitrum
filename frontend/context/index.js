@@ -36,7 +36,6 @@ export const AppProvider = ({children}) => {
       if (signer) {
         try {
           const balance = await signer.getBalance();
-          // Convert balance from wei to ETH and set it in state
           const formattedBalance = parseFloat(ethers.utils.formatEther(balance)).toFixed(3); // Limit to 3 decimal places
           setUserBalance(formattedBalance);
         } catch (error) {
@@ -70,15 +69,15 @@ export const AppProvider = ({children}) => {
         const data = await contract.call(
             "listProperty",
             [
-                owner,          // _owner
-                name,           // _name
-                price,         // _price
-                totalShares,   // _totalShares
-                rent,          // _rent
-                rentPeriod,    // _rentPeriod
-                images,        // _images
-                description,   // _description
-                propertyAddress // _propertyAddress
+                owner,          
+                name,           
+                price,          
+                totalShares,   
+                rent,
+                rentPeriod,
+                images,
+                description,   
+                propertyAddress 
             ]
         );
         return data;
@@ -139,7 +138,7 @@ const buySharesFunction = async (formData) => {
     const data = await buyShares({
       args: [propertyId, shares, address],
       overrides: {
-        value: ethers.utils.parseEther(price) // This should be in wei
+        value: ethers.utils.parseEther(price) 
       }
     });
     console.info("contract call success", data);
@@ -160,6 +159,7 @@ const sellSharesFunction = async (formData) => {
     console.info("contract call success", data);
   } catch (error) {
     console.error("contract call failure", error);
+    throw error
   }
 }
 
@@ -170,7 +170,7 @@ const addLiquidityFunction = async (amount) => {
   try {
     const data = await addLiquidity({
       overrides: {
-        value: ethers.utils.parseEther(amount) // Convert amount to wei
+        value: ethers.utils.parseEther(amount) 
       }
     });
     console.info("contract call success", data);
@@ -198,7 +198,7 @@ const removeLiquidityFunction = async (amount) => {
   const getLiquidityBalanceFunction = async (providerAddress) => {
     try {
       const balance = await contract.call('getLiquidityBalance', providerAddress);
-      return ethers.utils.formatEther(balance.toString()); // Convert balance from wei to ether
+      return ethers.utils.formatEther(balance.toString()); 
     } catch (error) {
       console.error("contract call failure", error);
       return null;
@@ -222,7 +222,7 @@ const removeLiquidityFunction = async (amount) => {
         args: [propertyId, address],
         overrides: {
           value: rent,
-          gasLimit: 500000 // Add explicit gas limit
+          gasLimit: 500000 
         }
       });
 
@@ -292,7 +292,6 @@ const removeLiquidityFunction = async (amount) => {
 
   const getSinglePropertyFunction = async (propertyId) => {
     try {
-        console.log("Getting property with ID:", propertyId);
         const property = await contract.call('getProperty', [propertyId]);
 
         const parsedProperty = [{
@@ -324,7 +323,7 @@ const removeLiquidityFunction = async (amount) => {
   const getShareholderInfoFunction = async (propertyId) => {
     try {
       const shareholderInfo = await contract.call('getShareholderInfo', [propertyId, address]);
-      // Contract returns a tuple of (shares, rentClaimed, unclaimedRent)
+     
       return [{
         shares: shareholderInfo[0],        // shares
         rentClaimed: shareholderInfo[1],   // rentClaimed
