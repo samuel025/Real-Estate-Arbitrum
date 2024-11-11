@@ -7,6 +7,7 @@ import {
     useMetamask,
     useSigner,
     useDisconnect,
+    useChainId,
 } from "@thirdweb-dev/react";
 
 import { ethers } from "ethers";
@@ -22,13 +23,73 @@ export const useAppContext = () => {
   return context;
 };
 
+
+
 export const AppProvider = ({children}) => {
   const {contract} = useContract("0x5a290E063fdd2af565283dd9942f1419496d5c9D")
 
   const address = useAddress();
-  const connect = useMetamask()
+  const connectWithMetamask = useMetamask()
   const disconnect = useDisconnect();
   const signer = useSigner();
+
+
+
+
+  const connect = async () => {
+    try {
+      if (typeof window.ethereum === "undefined") {
+        throw new Error("Please install MetaMask");
+      }
+
+      // First connect the wallet
+      await connectWithMetamask();
+      
+      // Check if we're already on Arbitrum Sepolia
+      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+      
+      if (currentChainId !== '0x66eee') { // 421614 in hex
+        try {
+          // Try to switch to Arbitrum Sepolia
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x66eee' }],
+          });
+        } catch (switchError) {
+          // If the network hasn't been added to MetaMask
+          if (switchError.code === 4902) {
+            try {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0x66eee',
+                  chainName: 'Arbitrum Sepolia',
+                  nativeCurrency: {
+                    name: 'ETH',
+                    symbol: 'ETH',
+                    decimals: 18
+                  },
+                  rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+                  blockExplorerUrls: ['https://sepolia.arbiscan.io']
+                }],
+              });
+            } catch (addError) {
+              console.error('Error adding the network:', addError);
+              throw new Error('Failed to add Arbitrum Sepolia network');
+            }
+          } else {
+            console.error('Error switching network:', switchError);
+            throw switchError;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Connection error:', error);
+      throw error;
+    }
+  };
+
+
 
   const [userBalance, setUserBalance] = useState("");
   useEffect(() => {
@@ -438,6 +499,9 @@ const removeLiquidityFunction = async (amount) => {
       throw error;
     }
   };
+
+  
+
 
   const value = {
     contract,
