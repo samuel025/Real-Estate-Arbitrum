@@ -25,6 +25,9 @@ export default function Navbar() {
           <Link href="/listproperty" className={styles.navLink}>
             List Property
           </Link>
+          <Link href="/marketplace" className={styles.navLink}>
+            Marketplace
+          </Link>
           
           <div className={styles.walletSection}>
             {!address ? (

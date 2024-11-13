@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, useCallback } from 'react';
 import { useAppContext } from '../../../context';
 import { useParams } from 'next/navigation';
 import { ethers } from 'ethers';
@@ -10,7 +10,7 @@ import ReviewModal from '@/components/ReviewModal';
 import Link from 'next/link';
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, sellSharesFunction } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,9 +23,28 @@ export default function PropertyDetails() {
   const [rentPeriodStatus, setRentPeriodStatus] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviews, setReviews] = useState([]);
-  const [hasReviewed, setHasReviewed] = useState([]);
+  const [hasReviewed, setHasReviewed] = useState(false);
   const [sharesToSell, setSharesToSell] = useState(1);
   const [sellError, setSellError] = useState('');
+  const [pricePerShare, setPricePerShare] = useState('');
+  const [listingError, setListingError] = useState('');
+  const [unclaimedRent, setUnclaimedRent] = useState(null);
+  const [rentClaimStatus, setRentClaimStatus] = useState({
+    hasUnclaimedRent: false,
+    unclaimedAmount: '0',
+    canListShares: true
+  });
+  const [rentPeriods, setRentPeriods] = useState([]);
+  const [unclaimedRentAmount, setUnclaimedRentAmount] = useState('0');
+  const [totalRequiredAmount, setTotalRequiredAmount] = useState(null);
+  const [isPayingRent, setIsPayingRent] = useState(false);
+  const [accruedRentInfo, setAccruedRentInfo] = useState({
+    amount: '0',
+    periodStart: null,
+    periodEnd: null,
+    lastClaim: null
+  });
+  const [propertyListings, setPropertyListings] = useState([]);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -47,73 +66,71 @@ export default function PropertyDetails() {
     setTotalCost(newTotalCost);
   }, [sharesToBuy, property?.price]);
 
-  useEffect(() => {
-    let mounted = true;
+  const fetchAllData = useCallback(async () => {
+    if (!params.id || !contract) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    const fetchAllData = async () => {
-      if (!params.id || !contract) return;
-      
-      try {
-        setIsLoading(true);
-        setError(null);
+      const [
+        propertyData, 
+        shareholderInfo, 
+        rentDueStatus, 
+        periodStatus, 
+        reviewsData,
+        rentPeriods,
+        listings,
+        hasReviewedStatus
+      ] = await Promise.all([
+        getSinglePropertyFunction(params.id),
+        getShareholderInfoFunction(params.id),
+        checkisRentDueFunction(params.id),
+        getRentPeriodStatus(params.id),
+        getPropertyReviewsFunction(params.id),
+        getRentPeriodsFunction(params.id),
+        getPropertyListingsFunction(params.id),
+        contract.call('hasReviewed', [params.id, address])
+      ]);
 
-        // Fetch all data in parallel
-        const [propertyData, shareholderInfo, rentDueStatus, periodStatus, reviewsData] = await Promise.all([
-          getSinglePropertyFunction(params.id),
-          getShareholderInfoFunction(params.id),
-          checkisRentDueFunction(params.id),
-          getRentPeriodStatus(params.id),
-          getPropertyReviewsFunction(params.id)
-        ]);
+      setHasReviewed(hasReviewedStatus);
 
-        console.log('Reviews Data:', reviewsData);
-
-        if (!mounted) return;
-
-        if (!propertyData || !propertyData[0]) {
-          setError('Property not found');
-          return;
-        }
-
-        setProperty(propertyData[0]);
-
-        // Fetch additional data only if property exists
-        setShareholdersInfo(shareholderInfo || []);
-        setIsRentDue(rentDueStatus);
-        setRentPeriodStatus(periodStatus);
-
-        // Add reviews state update
-        setReviews(reviewsData || []);
-
-        const userReviewExists = reviewsData?.some(review => review?.reviewer?.toLowerCase() === address?.toLowerCase());
-        setHasReviewed(userReviewExists);
-        
-      } catch (err) {
-        if (mounted) {
-          console.error("Error fetching data:", err);
-          setError(err.message || "Failed to load property");
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-          setDataFetched(true);
-        }
+      if (!propertyData || !propertyData[0]) {
+        setError('Property not found');
+        return;
       }
-    };
 
+      setProperty(propertyData[0]);
+      setShareholdersInfo(shareholderInfo || []);
+      setIsRentDue(rentDueStatus);
+      setRentPeriodStatus(periodStatus);
+      setReviews(reviewsData || []);
+      setRentPeriods(rentPeriods);
+      setPropertyListings(listings);
+
+      if (shareholderInfo && shareholderInfo[0]) {
+        setUnclaimedRent(shareholderInfo[0].UnclaimedRent);
+        setUnclaimedRentAmount(ethers.utils.formatEther(shareholderInfo[0].UnclaimedRent));
+      }
+
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(err.message || "Failed to load property");
+    } finally {
+      setIsLoading(false);
+      setDataFetched(true);
+    }
+  }, [params.id, contract, getSinglePropertyFunction, getShareholderInfoFunction, 
+      checkisRentDueFunction, getRentPeriodStatus, getPropertyReviewsFunction, 
+      getRentPeriodsFunction, getPropertyListingsFunction]);
+
+  useEffect(() => {
     fetchAllData();
-
-    return () => {
-      mounted = false;
-    };
-  }, [params.id, contract, getSinglePropertyFunction, getShareholderInfoFunction, checkisRentDueFunction, getRentPeriodStatus]);
+  }, [fetchAllData]);
 
   const getRentDueText = () => {
     if (!rentPeriodStatus) return "Loading...";
-    if (isRentDue) return "Claim Rent";
-    
-    const daysRemaining = Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60));
-    return `Rent due for claim in ${daysRemaining} days`;
+    return 'Claim rent'
   };
 
   const handleBuyShares = (e) => {
@@ -142,27 +159,30 @@ export default function PropertyDetails() {
   };
 
   const handlePayRent = async () => {
+    if (!property) return;
+    
     try {
-      if (!property || !property.rent) {
-        throw new Error("Invalid property rent value");
-      }
-      const rentAmount = property.rent;
+      setIsPayingRent(true);
+      
+      // Get the total required amount including any late fees and debt
+      const lateFees = await contract.call('calculateLateFees', [params.id]);
+      const rentStatus = await contract.call('getRentStatus', [params.id]);
+      
+      const totalRequired = ethers.BigNumber.from(property.rent)
+        .add(lateFees)
+        .add(rentStatus.totalDebt || 0);
+
       await payRentFunction({
         propertyId: params.id,
-        rent: rentAmount 
+        rent: totalRequired
       });
 
-      const updatedProperty = await getSinglePropertyFunction(params.id);
-      if (updatedProperty && updatedProperty[0]) {
-        setProperty(updatedProperty[0]);
-      }
-
-      // Refresh rent status
-      const rentDueStatus = await checkisRentDueFunction(params.id);
-      setIsRentDue(rentDueStatus);
-
+      // Refresh data after successful payment
+      await fetchAllData();
     } catch (error) {
       console.error("Error paying rent:", error);
+    } finally {
+      setIsPayingRent(false);
     }
   };
 
@@ -178,24 +198,123 @@ export default function PropertyDetails() {
     }
   };
 
-  const handleSellShares = async (e) => {
-    e.preventDefault();
-    setSellError('');
+  const checkShareListingEligibility = async () => {
+    if (!property || !address) return;
+
     try {
-      await sellSharesFunction({
-        propertyId: property.propertyId,
-        shares: sharesToSell,
-        seller: address
+      const shareholderInfo = await getShareholderInfoFunction(params.id);
+      
+      const unclaimedAmount = ethers.utils.formatEther(shareholderInfo[0].UnclaimedRent);
+      const hasUnclaimed = parseFloat(unclaimedAmount) > 0;
+
+      setRentClaimStatus({
+        hasUnclaimedRent: hasUnclaimed,
+        unclaimedAmount: unclaimedAmount,
+        canListShares: !hasUnclaimed
       });
+
     } catch (error) {
-       if(error.reason.includes("InsufficientLiquidity")){
-        setSellError("Insufficient Liquidity in the pool")
-       }
+      console.error("Error checking listing eligibility:", error);
     }
   };
-  // Check if the user has shares
-  const userShares = shareholdersInfo.map((holder, index) => holder?.shares);
 
+  const handleListShares = async (e) => {
+    e.preventDefault();
+    setListingError('');
+
+    try {
+      // Input validation
+      if (!sharesToSell || sharesToSell <= 0) {
+        setListingError('Please enter a valid number of shares');
+        return;
+      }
+
+      if (!pricePerShare || parseFloat(pricePerShare) <= 0) {
+        setListingError('Please enter a valid price');
+        return;
+      }
+
+      // Ensure price is formatted correctly (max 18 decimals)
+      const formattedPrice = parseFloat(pricePerShare).toFixed(18);
+
+      console.log("Listing shares with values:", {
+        propertyId: params.id,
+        shares: sharesToSell,
+        price: formattedPrice
+      });
+
+      await listSharesForSaleFunction({
+        propertyId: params.id,
+        shares: sharesToSell,
+        pricePerShare: formattedPrice
+      });
+
+      setSharesToSell(1);
+      setPricePerShare('');
+      alert('Shares listed successfully!');
+      
+      await checkShareListingEligibility();
+    } catch (error) {
+      console.error("Full error:", error);
+      
+      // Extract error message
+      let errorMessage = "Failed to list shares: ";
+      if (error.reason) errorMessage += error.reason;
+      else if (error.message) errorMessage += error.message;
+      else errorMessage += "Unknown error occurred";
+      
+      setListingError(errorMessage);
+    }
+  };
+
+  // Check if the user has shares
+  const userShares = shareholdersInfo[0]?.shares ? parseInt(shareholdersInfo[0].shares) : 0;
+
+  // Add a function to display the total required amount
+  const getTotalRequiredAmount = async () => {
+    try {
+      const lateFees = await contract.call('calculateLateFees', [params.id]);
+      const rentStatus = await contract.call('getRentStatus', [params.id]);
+      
+      const totalRequired = ethers.BigNumber.from(property.rent)
+        .add(lateFees)
+        .add(rentStatus.totalDebt || 0);
+
+      return ethers.utils.formatEther(totalRequired);
+    } catch (error) {
+      console.error("Error calculating total required amount:", error);
+      return ethers.utils.formatEther(property.rent); // fallback to just rent amount
+    }
+  };
+
+  // Update your UI to show the total required amount
+  useEffect(() => {
+    if (property) {
+      getTotalRequiredAmount().then(amount => {
+        setTotalRequiredAmount(amount);
+      });
+    }
+  }, [property]);
+
+  useEffect(() => {
+    const fetchAccruedRent = async () => {
+      if (!params.id || !address) return;
+      
+      try {
+        const rentInfo = await getAccruedRentFunction(params.id, address);
+        setAccruedRentInfo({
+          accruedRent: rentInfo.accruedRent,
+          periodStart: rentInfo.periodStart,
+          periodEnd: rentInfo.periodEnd,
+          lastClaim: rentInfo.lastClaim
+        });
+      } catch (error) {
+        console.error("Error fetching accrued rent:", error);
+      }
+    };
+
+    fetchAccruedRent();
+  }, [params.id, address, getAccruedRentFunction]);
 
   if (isLoading || !dataFetched) {
     return (
@@ -271,47 +390,53 @@ export default function PropertyDetails() {
                           <span>{holder.shares?.toString() || '0'}</span>
                         </div>
                         <div className={styles.detailItem}>
+                          <span className={styles.label}>Shares Listed:</span>
+                          <span>{propertyListings?.reduce((total, listing) => 
+                            listing.isActive && listing.seller === address 
+                              ? total + parseInt(listing.numberOfShares) 
+                              : total, 0) || '0'}</span>
+                        </div>
+                        <div className={styles.detailItem}>
                           <span className={styles.label}>Rent Claimed:</span>
                           <span>
                             {holder.rentClaimed ? ethers.utils.formatEther(holder.rentClaimed) : '0'} ETH
                           </span>
                         </div>
                         <div className={styles.detailItem}>
-                          <span className={styles.label}>Unclaimed Rent:</span>
-                          <span>
-                            {holder.UnclaimedRent ? ethers.utils.formatEther(holder.UnclaimedRent) : '0'} ETH
-                          </span>
+                          <span className={styles.label}>Accrued Rent:</span>
+                          <span>{accruedRentInfo.accruedRent || '0'} ETH</span>
                         </div>
-                        {holder.UnclaimedRent && ethers.BigNumber.from(holder.UnclaimedRent).gt(0) && (
+                        {parseFloat(accruedRentInfo.accruedRent) > 0 && (
                           <button 
                             onClick={handleClaimRent}
                             className={styles.claimButton}
-                            disabled={!isRentDue}
-                            title={!isRentDue ? `Rent will be due in ${Math.ceil(rentPeriodStatus?.remainingTime / (24 * 60 * 60))} days` : "Click to claim your rent"}
+                            disabled={!rentPeriodStatus?.isActive}
+                            title={!rentPeriodStatus?.isActive ? 
+                              `Rent period not active` : 
+                              "Click to claim your accrued rent"}
                           >
-                            {getRentDueText()}
+                            Claim Accrued Rent
                           </button>
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
-                
-                <div className={styles.reviewSection}>
-                {!hasReviewed && (
-                <button 
+              </div>
+            )}
+
+            <div className={styles.reviewsSection}>
+              <div className={styles.reviewsHeader}>
+                <h3>Property Reviews</h3>
+                {!hasReviewed && shareholdersInfo[0]?.shares > 0 && (
+                  <button 
                     onClick={() => setIsReviewModalOpen(true)}
                     className={styles.reviewButton}
                   >
                     Write a Review
                   </button>
                 )}
-                </div>
               </div>
-            )}
-
-            <div className={styles.reviewsSection}>
-              <h3>Property Reviews</h3>
               {reviews && reviews.length > 0 ? (
                 <div className={styles.reviewsGrid}>
                   {reviews.map((review, index) => (
@@ -404,11 +529,45 @@ export default function PropertyDetails() {
                           <span>{property.AvailableShares}</span>
                         </div>
                       )}
+                      <div className={styles.detailItem}>
+                        <span className={styles.label}>Listed Shares:</span>
+                        <span>{propertyListings?.reduce((total, listing) => 
+                          listing.isActive ? total + parseInt(listing.numberOfShares) : total, 0) || 0}</span>
+                      </div>
                     </div>
 
                     <div className={styles.detailBox}>
-                      <h3>Description</h3>
-                      <p className={styles.description}>{property.description}</p>
+                      <h3>Rent Period Information</h3>
+                      {rentPeriodStatus && (
+                        <>
+                          <div className={styles.detailItem}>
+                            <span className={styles.label}>Period Start:</span>
+                            <span>
+                              {rentPeriodStatus.periodStart?.toLocaleDateString() || 'Not started'}
+                            </span>
+                          </div>
+                          <div className={styles.detailItem}>
+                            <span className={styles.label}>Period End:</span>
+                            <span>
+                              {rentPeriodStatus.periodEnd?.toLocaleDateString() || 'Not set'}
+                            </span>
+                          </div>
+                          <div className={styles.detailItem}>
+                            <span className={styles.label}>Status:</span>
+                            <span className={`${styles.status} ${rentPeriodStatus.isActive ? styles.active : styles.inactive}`}>
+                              {rentPeriodStatus.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          {rentPeriodStatus.isActive && (
+                            <div className={styles.detailItem}>
+                              <span className={styles.label}>Time Remaining:</span>
+                              <span>
+                                {Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60))} days
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -455,33 +614,66 @@ export default function PropertyDetails() {
                     </form>
                   </div>
                 )}
-                {property.owner !== address && address && userShares > 0 && ( // Only show if user has shares
+                {property.owner !== address && address && userShares > 0 && (
                   <div className={styles.sellSection}>
-                    {sellError && <div className={styles.errorMessage}>{sellError}</div>}
-                    <h3>Sell Shares</h3>
-                    <form onSubmit={handleSellShares} className={styles.sellSharesForm}>
+                    {listingError && <div className={styles.errorMessage}>{listingError}</div>}
+                    
+                    <h3>List Shares for Sale</h3>
+                    <form onSubmit={handleListShares} className={styles.sellSharesForm}>
                       <div className={styles.formGroup}>
-                        <label htmlFor="sharesToSell">Number of Shares:</label>
+                        <label htmlFor="sharesToSell">Number of Shares to List:</label>
                         <input
                           type="number"
                           id="sharesToSell"
                           min="1"
-                          max={userShares} // Limit input to user's shares
+                          max={userShares}
                           value={sharesToSell}
                           onChange={(e) => {
                             const value = e.target.value;
                             if (value === '' || value === '0') {
-                              setSharesToSell(''); // Reset if empty or zero
+                              setSharesToSell('');
                             } else {
-                              setSharesToSell(Math.min(Math.max(1, parseInt(value)), userShares)); // Ensure at least 1 and not more than available shares
+                              setSharesToSell(Math.min(Math.max(1, parseInt(value)), userShares));
                             }
                           }}
                           required
-                          className={styles.inputField} // Add a class for styling
+                          className={styles.inputField}
                         />
                       </div>
-                      <button type="submit" className={styles.sellButton}>
-                        Sell Shares
+                      
+                      <div className={styles.formGroup}>
+                        <label htmlFor="pricePerShare">Price per Share (ETH):</label>
+                        <input
+                          type="text"
+                          id="pricePerShare"
+                          value={pricePerShare}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              setPricePerShare(value);
+                            }
+                          }}
+                          required
+                          className={styles.inputField}
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className={styles.costSummary}>
+                        <div className={styles.costItem}>
+                          <span>Total Value:</span>
+                          <span>{pricePerShare && sharesToSell ? 
+                            (parseFloat(pricePerShare) * sharesToSell).toFixed(18) : '0'} ETH</span>
+                        </div>
+                        <div className={styles.costItem}>
+                          <span>Platform Fee (0.5%):</span>
+                          <span>{pricePerShare && sharesToSell ? 
+                            (parseFloat(pricePerShare) * sharesToSell * 0.005).toFixed(18) : '0'} ETH</span>
+                        </div>
+                      </div>
+
+                      <button type="submit" className={styles.listButton}>
+                        List Shares for Sale
                       </button>
                     </form>
                   </div>

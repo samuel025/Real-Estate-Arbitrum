@@ -2,38 +2,84 @@
 
 ## Overview
 
-RealEstate DApp is a decentralized application built using React and Thirdweb that allows users to list, buy, and sell properties on the blockchain. The application features a wallet connection, user balance display, and a profile menu for managing user properties and investments.
+RealEstate DApp is a decentralized application built on Arbitrum Sepolia that revolutionizes real estate investment through tokenization. The platform enables property owners to tokenize their real estate assets and allows investors to purchase shares, earn rental income, and trade their holdings in a secure, transparent marketplace.
 
-## Features
+## Core Features
 
-- Connect and disconnect wallet using MetaMask.
-- List properties for sale or rent.
-- View user balance and address.
-- Manage user properties and investments.
-- Switch to Arbitrum Sepolia network when connecting the wallet.
+### Property Management
+- **Property Tokenization**: Property owners can list their real estate by creating tokens that represent shares of ownership
+- **Property Details**: Each listing includes comprehensive information:
+  - Property name, description, and images
+  - Total shares and price per share
+  - Rental terms and periods
+  - Physical property address
+  - Current ownership distribution
 
-## Technologies Used
+### Investment Features
+- **Share Purchase**: Users can buy shares of properties directly from owners
+- **Secondary Market**: A marketplace for trading previously purchased shares
+  - List shares for sale at custom prices
+  - Buy shares from other investors
+  - Cancel or modify share listings
+- **Rental Income**: 
+  - Automatic rent distribution based on share ownership
+  - Claim accrued rental income
+  - View detailed rent payment history
 
-- **Frontend:** React, Next.js
-- **Blockchain:** Ethereum, Arbitrum Sepolia
-- **Smart Contracts:** Thirdweb
-- **Styling:** CSS Modules
-- **Icons:** React Icons
+### Rental Management
+- **Rent Collection**: 
+  - Automated rent payment processing
+  - Late fee calculation and distribution
+  - Rent default tracking
+- **Rent Periods**: 
+  - Configurable rental periods
+  - Real-time status tracking
+  - Automatic period management
 
-## Project Structure
-frontend
-├── /components
-│ ├── Navbar.js # Navbar component for wallet connection and navigation
-│ └── ... # Other components
-├── /context
-│ ├── index.js # Context for managing application state and blockchain interactions
-├── /styles
-│ ├── Navbar.module.css # CSS module for Navbar styling
-└── ... # Other files and folders
+### User Features
+- **Portfolio Management**:
+  - View owned properties and shares
+  - Track rental income and claims
+  - Manage share listings
+- **Property Reviews**: 
+  - Submit and view property ratings
+  - Leave detailed feedback
+- **Wallet Integration**:
+  - Connect with MetaMask
+  - Automatic network switching to Arbitrum Sepolia
+  - Real-time balance display
 
+### Advanced Features
+- **Smart Contract Security**:
+  - Built-in checks for rent payments
+  - Share ownership verification
+  - Automated fee distribution
+- **Market Analysis**:
+  - View property performance metrics
+  - Track rental yield
+  - Monitor market activity
 
+## Technical Architecture
 
-## Installation
+### Smart Contract Layer
+- Property tokenization logic
+- Share transfer mechanisms
+- Rent distribution system
+- Market operations handling
+
+### Frontend Integration
+- React/Next.js based interface
+- Thirdweb SDK integration
+- Real-time blockchain updates
+- Responsive design
+
+### Key Components
+- Property listing management
+- Share trading system
+- Rent payment processing
+- User portfolio tracking
+
+## Installation & Setup
 
 ### Prerequisites
 
@@ -72,12 +118,44 @@ frontend
 
    The application will be available at `http://localhost:3000`.
 
-## Usage
+## Usage Guide
 
-1. Open the application in your browser.
-2. Click on the "Connect Wallet" button in the Navbar to connect your MetaMask wallet.
-3. If your wallet is on a different network, it will automatically switch to Arbitrum Sepolia.
-4. Use the navigation links to list properties, view your properties, and manage your investments.
+### For Property Owners
+1. Connect wallet and ensure sufficient ETH for gas
+2. Create new property listing with required details
+3. Set share distribution and rental terms
+4. Monitor and manage property performance
+
+### For Investors
+1. Browse available properties
+2. Purchase shares directly or through marketplace
+3. Collect rental income from owned shares
+4. Trade shares on secondary market
+
+### For Renters
+1. View property details and rental terms
+2. Process rent payments
+3. Submit property reviews
+4. Track payment history
+
+## Smart Contract Addresses
+
+- Main Contract: `0x3e488Bb2eE72A6E89f6D9fe526dF77Ea8E751aad`
+- Network: Arbitrum Sepolia
+
+## Security Features
+
+- Automated rent distribution
+- Share ownership verification
+- Late payment handling
+- Default protection mechanisms
+
+## Future Enhancements
+
+- Multi-token support
+- Advanced analytics dashboard
+- Mobile application
+- Cross-chain integration
 
 ## Contributing
 

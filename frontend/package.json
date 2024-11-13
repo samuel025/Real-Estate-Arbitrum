@@ -11,6 +11,7 @@
   "dependencies": {
     "@thirdweb-dev/react": "^3.16.5",
     "@thirdweb-dev/sdk": "^3.10.67",
+    "dotenv": "^16.4.5",
     "ethers": "^5.7.2",
     "next": "14.2.15",
     "pino-pretty": "^11.3.0",
