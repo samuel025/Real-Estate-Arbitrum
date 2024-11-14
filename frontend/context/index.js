@@ -33,8 +33,21 @@ export const AppProvider = ({children}) => {
   const disconnect = useDisconnect();
   const signer = useSigner();
 
+  // Store listener functions
+  const handleAccountsChanged = (accounts) => {
+    if (accounts.length === 0) {
+      // Handle disconnection
+      disconnect();
+    } else {
+      // Handle account change
+      window.location.reload();
+    }
+  };
 
-
+  const handleChainChanged = (_chainId) => {
+    // Handle chain change by reloading the page
+    window.location.reload();
+  };
 
   const connect = async () => {
     try {
@@ -46,20 +59,14 @@ export const AppProvider = ({children}) => {
       }
 
       try {
-        // Request account access
-        await window.ethereum.request({ 
-          method: 'eth_requestAccounts' 
-        });
-        
-        // Connect with MetaMask
+        // Request account access and connect
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
         await connectWithMetamask();
         
         // Check and switch network
-        const currentChainId = await window.ethereum.request({ 
-          method: 'eth_chainId' 
-        });
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
         
-        if (currentChainId !== '0x66eee') { // Arbitrum Sepolia
+        if (currentChainId !== '0x66eee') {
           try {
             await window.ethereum.request({
               method: 'wallet_switchEthereumChain',
@@ -96,45 +103,31 @@ export const AppProvider = ({children}) => {
           }
         }
 
-        // Add event listeners for account and chain changes
-        window.ethereum.on('accountsChanged', (accounts) => {
-          if (accounts.length === 0) {
-            // Handle disconnection
-            disconnect();
-          } else {
-            // Handle account change
-            window.location.reload();
-          }
-        });
-
-        window.ethereum.on('chainChanged', (_chainId) => {
-          // Handle chain change by reloading the page
-          window.location.reload();
-        });
+        // Add event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
 
       } catch (error) {
         console.error('Error connecting wallet:', error);
         alert('Failed to connect wallet. Please try again.');
-        return;
       }
     } catch (error) {
       console.error('Connection error:', error);
       alert('Failed to connect wallet. Please make sure MetaMask is installed and unlocked.');
-      return;
     }
   };
 
-  // Add cleanup for event listeners
+  // Cleanup event listeners properly
   useEffect(() => {
     return () => {
       if (window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', null);
-        window.ethereum.removeListener('chainChanged', null);
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
-  }, []);
+  }, []); // Empty dependency array since these functions don't change
 
-  // Add a function to check if wallet is already connected
+  // Check initial connection
   useEffect(() => {
     const checkConnection = async () => {
       if (window.ethereum) {
@@ -143,7 +136,6 @@ export const AppProvider = ({children}) => {
             method: 'eth_accounts'
           });
           if (accounts.length > 0) {
-            // Wallet is already connected
             connect();
           }
         } catch (error) {
