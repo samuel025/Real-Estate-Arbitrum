@@ -31,7 +31,17 @@ export default function Navbar() {
           
           <div className={styles.walletSection}>
             {!address ? (
-              <button onClick={connect} className={styles.connectButton}>
+              <button 
+                onClick={async () => {
+                  try {
+                    await connect();
+                  } catch (error) {
+                    console.error('Connection error:', error);
+                    alert('Failed to connect wallet. Please make sure MetaMask is installed and unlocked.');
+                  }
+                }} 
+                className={styles.connectButton}
+              >
                 Connect Wallet
               </button>
             ) : (

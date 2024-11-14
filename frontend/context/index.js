@@ -38,56 +38,122 @@ export const AppProvider = ({children}) => {
 
   const connect = async () => {
     try {
+      // Check if MetaMask is installed
       if (typeof window.ethereum === "undefined") {
-        throw new Error("Please install MetaMask");
+        alert("Please install MetaMask to use this application");
+        window.open("https://metamask.io/download/", "_blank");
+        return;
       }
 
-      // First connect the wallet
-      await connectWithMetamask();
-      
-      // Check if we're already on Arbitrum Sepolia
-      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-      
-      if (currentChainId !== '0x66eee') { // 421614 in hex
-        try {
-          // Try to switch to Arbitrum Sepolia
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x66eee' }],
-          });
-        } catch (switchError) {
-          // If the network hasn't been added to MetaMask
-          if (switchError.code === 4902) {
-            try {
-              await window.ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: '0x66eee',
-                  chainName: 'Arbitrum Sepolia',
-                  nativeCurrency: {
-                    name: 'ETH',
-                    symbol: 'ETH',
-                    decimals: 18
-                  },
-                  rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
-                  blockExplorerUrls: ['https://sepolia.arbiscan.io']
-                }],
-              });
-            } catch (addError) {
-              console.error('Error adding the network:', addError);
-              throw new Error('Failed to add Arbitrum Sepolia network');
+      try {
+        // Request account access
+        await window.ethereum.request({ 
+          method: 'eth_requestAccounts' 
+        });
+        
+        // Connect with MetaMask
+        await connectWithMetamask();
+        
+        // Check and switch network
+        const currentChainId = await window.ethereum.request({ 
+          method: 'eth_chainId' 
+        });
+        
+        if (currentChainId !== '0x66eee') { // Arbitrum Sepolia
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: '0x66eee' }],
+            });
+          } catch (switchError) {
+            // Handle chain not added to MetaMask
+            if (switchError.code === 4902) {
+              try {
+                await window.ethereum.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [{
+                    chainId: '0x66eee',
+                    chainName: 'Arbitrum Sepolia',
+                    nativeCurrency: {
+                      name: 'ETH',
+                      symbol: 'ETH',
+                      decimals: 18
+                    },
+                    rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+                    blockExplorerUrls: ['https://sepolia.arbiscan.io']
+                  }],
+                });
+              } catch (addError) {
+                console.error('Error adding network:', addError);
+                alert('Failed to add Arbitrum Sepolia network to MetaMask');
+                return;
+              }
+            } else {
+              console.error('Error switching network:', switchError);
+              alert('Failed to switch to Arbitrum Sepolia network');
+              return;
             }
-          } else {
-            console.error('Error switching network:', switchError);
-            throw switchError;
           }
         }
+
+        // Add event listeners for account and chain changes
+        window.ethereum.on('accountsChanged', (accounts) => {
+          if (accounts.length === 0) {
+            // Handle disconnection
+            disconnect();
+          } else {
+            // Handle account change
+            window.location.reload();
+          }
+        });
+
+        window.ethereum.on('chainChanged', (_chainId) => {
+          // Handle chain change by reloading the page
+          window.location.reload();
+        });
+
+      } catch (error) {
+        console.error('Error connecting wallet:', error);
+        alert('Failed to connect wallet. Please try again.');
+        return;
       }
     } catch (error) {
       console.error('Connection error:', error);
-      throw error;
+      alert('Failed to connect wallet. Please make sure MetaMask is installed and unlocked.');
+      return;
     }
   };
+
+  // Add cleanup for event listeners
+  useEffect(() => {
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', null);
+        window.ethereum.removeListener('chainChanged', null);
+      }
+    };
+  }, []);
+
+  // Add a function to check if wallet is already connected
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({
+            method: 'eth_accounts'
+          });
+          if (accounts.length > 0) {
+            // Wallet is already connected
+            connect();
+          }
+        } catch (error) {
+          console.error('Error checking wallet connection:', error);
+        }
+      }
+    };
+
+    checkConnection();
+  }, []);
 
 
 
