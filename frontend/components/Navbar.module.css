@@ -221,4 +221,16 @@
   .connectButton, .disconnectButton {
     width: 100%;
   }
+}
+
+.errorMessage {
+  color: #ff4444;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.connectButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 } 

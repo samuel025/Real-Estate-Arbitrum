@@ -7,7 +7,7 @@ import { useState, useRef } from 'react';
 import { FaUserCircle } from 'react-icons/fa'
 
 export default function Navbar() {
-  const { address, userBalance, connect, disconnect } = useAppContext();
+  const { address, userBalance, connect, disconnect, isConnecting } = useAppContext();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const menuRef = useRef(null);
 
@@ -36,13 +36,13 @@ export default function Navbar() {
                   try {
                     await connect();
                   } catch (error) {
-                    console.error('Connection error:', error);
-                    alert('Failed to connect wallet. Please make sure MetaMask is installed and unlocked.');
+                    console.error('Navbar connection error:', error);
                   }
                 }} 
                 className={styles.connectButton}
+                disabled={isConnecting}
               >
-                Connect Wallet
+                {isConnecting ? 'Connecting...' : 'Connect Wallet'}
               </button>
             ) : (
               <>

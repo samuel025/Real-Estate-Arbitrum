@@ -25,6 +25,9 @@ export const useAppContext = () => {
 
 
 export const AppProvider = ({children}) => {
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+
   const {contract} = useContract("0x3136aF1BaE6744d7EC8abe5bcaF89B5C916E5aD8")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
@@ -49,34 +52,51 @@ export const AppProvider = ({children}) => {
     window.location.reload();
   };
 
+  // Safely check for window.ethereum
+  const getEthereum = () => {
+    if (typeof window !== 'undefined') {
+      return window.ethereum;
+    }
+    return null;
+  };
+
   const connect = async () => {
+    setIsConnecting(true);
+    setConnectionError(null);
+    
     try {
-      // Check if MetaMask is installed
-      if (typeof window.ethereum === "undefined") {
+      const ethereum = getEthereum();
+      
+      if (!ethereum) {
+        setConnectionError('Please install MetaMask');
         alert("Please install MetaMask to use this application");
         window.open("https://metamask.io/download/", "_blank");
         return;
       }
 
       try {
-        // Request account access and connect
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        // Enable the wallet first
+        await ethereum.enable();
+        
+        // Connect with ThirdWeb
         await connectWithMetamask();
-        
-        // Check and switch network
-        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-        
-        if (currentChainId !== '0x66eee') {
+
+        // Check network after successful connection
+        const chainId = await ethereum.request({ 
+          method: 'eth_chainId' 
+        });
+
+        if (chainId !== '0x66eee') {
           try {
-            await window.ethereum.request({
+            await ethereum.request({
               method: 'wallet_switchEthereumChain',
               params: [{ chainId: '0x66eee' }],
             });
           } catch (switchError) {
-            // Handle chain not added to MetaMask
+            // This error code indicates that the chain has not been added to MetaMask
             if (switchError.code === 4902) {
               try {
-                await window.ethereum.request({
+                await ethereum.request({
                   method: 'wallet_addEthereumChain',
                   params: [{
                     chainId: '0x66eee',
@@ -91,55 +111,61 @@ export const AppProvider = ({children}) => {
                   }],
                 });
               } catch (addError) {
-                console.error('Error adding network:', addError);
-                alert('Failed to add Arbitrum Sepolia network to MetaMask');
-                return;
+                setConnectionError('Failed to add network');
+                throw addError;
               }
             } else {
-              console.error('Error switching network:', switchError);
-              alert('Failed to switch to Arbitrum Sepolia network');
-              return;
+              setConnectionError('Failed to switch network');
+              throw switchError;
             }
           }
         }
 
-        // Add event listeners
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-        window.ethereum.on('chainChanged', handleChainChanged);
+        // Setup event listeners
+        const setupListeners = () => {
+          if (ethereum) {
+            ethereum.on('accountsChanged', handleAccountsChanged);
+            ethereum.on('chainChanged', handleChainChanged);
+          }
+        };
+
+        setupListeners();
+
+        // Update user balance
+        if (ethereum.selectedAddress) {
+          const provider = new ethers.providers.Web3Provider(ethereum);
+          const balance = await provider.getBalance(ethereum.selectedAddress);
+          setUserBalance(ethers.utils.formatEther(balance));
+        }
 
       } catch (error) {
-        console.error('Error connecting wallet:', error);
-        alert('Failed to connect wallet. Please try again.');
+        console.error('Connection error:', error);
+        setConnectionError(error.message);
+        throw error;
       }
     } catch (error) {
-      console.error('Connection error:', error);
-      alert('Failed to connect wallet. Please make sure MetaMask is installed and unlocked.');
+      console.error('Wallet connection failed:', error);
+      setConnectionError(error.message);
+      throw error;
+    } finally {
+      setIsConnecting(false);
     }
   };
 
-  // Cleanup event listeners properly
-  useEffect(() => {
-    return () => {
-      if (window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
-      }
-    };
-  }, []); // Empty dependency array since these functions don't change
-
-  // Check initial connection
+  // Check initial connection on mount
   useEffect(() => {
     const checkConnection = async () => {
-      if (window.ethereum) {
+      const ethereum = getEthereum();
+      if (ethereum) {
         try {
-          const accounts = await window.ethereum.request({
+          const accounts = await ethereum.request({
             method: 'eth_accounts'
           });
           if (accounts.length > 0) {
             connect();
           }
         } catch (error) {
-          console.error('Error checking wallet connection:', error);
+          console.error('Error checking connection:', error);
         }
       }
     };
@@ -147,7 +173,16 @@ export const AppProvider = ({children}) => {
     checkConnection();
   }, []);
 
-
+  // Cleanup listeners on unmount
+  useEffect(() => {
+    return () => {
+      const ethereum = getEthereum();
+      if (ethereum) {
+        ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, []);
 
   const [userBalance, setUserBalance] = useState("");
   useEffect(() => {
@@ -923,6 +958,8 @@ const removeLiquidityFunction = async (amount) => {
     signer,
     userBalance,
     connect,
+    isConnecting,
+    connectionError,
     listPropertyFunction,
     getPropertiesFunction,
     updatePropertyFunction,
