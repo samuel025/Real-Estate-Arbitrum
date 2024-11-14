@@ -886,3 +886,44 @@
 .reviewButton:hover {
   background-color: #45a049;
 }
+
+.status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.active {
+  background-color: #e6f4ea;
+  color: #137333;
+}
+
+.inactive {
+  background-color: #fce8e6;
+  color: #c5221f;
+}
+
+.connectWalletMessage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  text-align: center;
+  gap: 20px;
+}
+
+.connectButton {
+  background-color: #4CAF50;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.connectButton:hover {
+  background-color: #45a049;
+}

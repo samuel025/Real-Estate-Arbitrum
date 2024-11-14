@@ -25,7 +25,8 @@ export const useAppContext = () => {
 
 
 export const AppProvider = ({children}) => {
-  const {contract} = useContract("0x3e488Bb2eE72A6E89f6D9fe526dF77Ea8E751aad")
+  const {contract} = useContract("0xcB1614aBd245E296BbF990825B32f440cC2F9560")
+  const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
   const address = useAddress();
   const connectWithMetamask = useMetamask()
@@ -197,21 +198,53 @@ export const AppProvider = ({children}) => {
 
   // --------------------------------------------
 
-const {mutateAsync: buyShares} = useContractWrite(contract, "purchaseShares");
+const {mutateAsync: purchaseInitialShares} = useContractWrite(contract, "purchaseShares");
+const {mutateAsync: purchaseListedShares} = useContractWrite(contract, "buyListedShares");
+
+// Initial share purchase function
 const buySharesFunction = async (formData) => {
   const {propertyId, shares, price} = formData;
   try {
-    const data = await buyShares({
+    const data = await purchaseInitialShares({
       args: [propertyId, shares, address],
       overrides: {
         value: ethers.utils.parseEther(price) 
       }
     });
-    console.info("contract call success", data);
+    console.info("Initial shares purchase successful", data);
+    return data;
   } catch (error) {
-    console.error("contract call failure", error);
+    console.error("Failed to purchase initial shares", error);
+    throw error;
   }
 }
+
+// Marketplace share purchase function
+const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
+    try {
+        if (!overrides || !overrides.value) {
+            throw new Error('Invalid transaction value');
+        }
+
+        // Debug the listing before purchase
+        const listingDetails = await contract.call('getListingDetails', [listingId]);
+        console.log('Attempting to buy from listing:', listingDetails);
+
+        if (!listingDetails.exists || !listingDetails.isActive) {
+            throw new Error('Invalid or inactive listing');
+        }
+
+        const data = await purchaseListedShares({
+            args: [listingId, sharesToBuy],
+            overrides: overrides
+        });
+        console.info("Listed shares purchase successful", data);
+        return data;
+    } catch (error) {
+        console.error("Failed to purchase listed shares", error);
+        throw error;
+    }
+};
 
 // --------------------------------------------
 
@@ -263,19 +296,11 @@ const removeLiquidityFunction = async (amount) => {
   const payRentFunction = async (formData) => {
     const {propertyId, rent} = formData;
     try {
-      // Calculate total required amount including any late fees or debt
-      const lateFees = await contract.call('calculateLateFees', [propertyId]);
-      const rentStatus = await contract.call('getRentStatus', [propertyId]);
-      
-      // Total amount needed = rent + late fees + any existing debt
-      const totalRequired = ethers.BigNumber.from(rent)
-        .add(lateFees)
-        .add(rentStatus.totalDebt || 0);
-
+      // Send only the base rent amount
       const data = await payRent({
         args: [propertyId, address],
         overrides: {
-          value: totalRequired // Send the total required amount
+          value: ethers.BigNumber.from(rent) // Use only the base rent amount
         }
       });
       
@@ -334,61 +359,37 @@ const removeLiquidityFunction = async (amount) => {
   //--------------------------------------------------------
 
 
-  const {mutateAsync: listShares} = useContractWrite(contract, "listSharesForSale")
-  const listSharesForSaleFunction = async (formData) => {
-    const { propertyId, shares, pricePerShare } = formData;
+  const listSharesForSaleFunction = async (propertyId, shares, pricePerShare) => {
     try {
-      // Convert values to BigNumber explicitly
-      const propertyIdBN = ethers.BigNumber.from(propertyId);
-      const sharesBN = ethers.BigNumber.from(shares);
-      const priceInWei = ethers.utils.parseUnits(pricePerShare, 18); // Use parseUnits for better precision
+      // Input validation
+      if (!propertyId) throw new Error("Property ID is required");
+      if (!shares || shares <= 0) throw new Error("Invalid number of shares");
+      if (!pricePerShare || parseFloat(pricePerShare) <= 0) throw new Error("Invalid price per share");
 
-      // Log the actual values being sent
-      console.log("Sending to contract:", {
-        propertyId: propertyIdBN.toString(),
-        shares: sharesBN.toString(),
-        priceInWei: priceInWei.toString(),
-        priceInEth: ethers.utils.formatEther(priceInWei)
+      // Convert price to Wei for the contract
+      const priceInWei = ethers.utils.parseEther(pricePerShare.toString());
+
+      // Execute the listing
+      const data = await listSharesForSale({
+        args: [propertyId, shares, priceInWei]
       });
 
-      // Call contract with raw BigNumber values
-      const data = await listShares({
-        args: [propertyIdBN, sharesBN, priceInWei]
-      });
-
+      console.info("Shares listed successfully:", data);
       return data;
+
     } catch (error) {
-      console.error("Contract call failed with values:", {
-        propertyId,
-        shares,
-        pricePerShare
-      });
+      console.error("Error in listSharesForSaleFunction:", error);
+      
+      // Handle specific contract errors
+      if (error.message.includes("InsufficientShares")) {
+        throw new Error("You don't have enough shares to list");
+      } else if (error.message.includes("InvalidPrice")) {
+        throw new Error("Invalid price");
+      }
+      
       throw error;
     }
   };
-
-
-  //--------------------------------------------------------
-
-  const {mutateAsync: buyListedShares} = useContractWrite(contract, "buyListedShares");
-  const buyListedSharesFunction = async (listingId, sharesToBuy, pricePerShare) => {
-    try {
-        // Calculate total cost for the number of shares being bought
-        const totalCost = ethers.utils.parseEther(pricePerShare).mul(sharesToBuy);
-        
-        const data = await buyListedShares({
-            args: [listingId, sharesToBuy], // Add sharesToBuy parameter
-            overrides: {
-                value: totalCost // Send exact amount for shares being purchased
-            }
-        });
-        console.info("contract call success", data);
-        return data;
-    } catch (error) {
-        console.error("contract call failure", error);
-        throw error;
-    }
-  }
 
   //--------------------------------------------------------
 
@@ -427,40 +428,70 @@ const removeLiquidityFunction = async (amount) => {
 
   const getActiveListingsFunction = async () => {
     try {
-        const listings = await contract.call('getAllListings'); // Updated function name
-        const parsedListings = listings.map(listing => ({
+        if (!contract) {
+            console.error("Contract not initialized");
+            return [];
+        }
+
+        console.log("Getting active listings from contract...");
+        const [listings, listingIds] = await contract.call('getAllListings');
+        console.log("Raw response:", { listings, listingIds });
+
+        // If no listings found
+        if (!listings || listings.length === 0) {
+            console.log("No listings found");
+            return [];
+        }
+
+        // Process and return the listings
+        const processedListings = listings.map((listing, index) => ({
+            listingId: listingIds[index].toString(),
             propertyId: listing.propertyId.toString(),
             seller: listing.seller,
             numberOfShares: listing.numberOfShares.toString(),
-            pricePerShare: ethers.utils.formatEther(listing.pricePerShare),
+            pricePerShare: listing.pricePerShare, // Keep as BigNumber for now
             isActive: listing.isActive,
-            listingTime: new Date(listing.listingTime.toNumber() * 1000),
-            accumulatedRent: ethers.utils.formatEther(listing.accumulatedRent)
+            listingTime: listing.listingTime.toString()
         }));
-        return parsedListings;
+
+        console.log("Processed listings:", processedListings);
+        return processedListings;
     } catch (error) {
-        console.error("Failed to get active listings", error);
-        throw error;
+        console.error("Error getting active listings:", error);
+        return [];
     }
-  }
+  };
 
   //--------------------------------------------------------
 
   const getPropertyListingsFunction = async (propertyId) => {
     try {
-      const listings = await contract.call('getPropertyListings', [propertyId]);
-      const parsedListings = listings.map(listing => ({
-        propertyId: listing.propertyId.toString(),
-        seller: listing.seller,
-        numberOfShares: listing.numberOfShares.toString(),
-        pricePerShare: ethers.utils.formatEther(listing.pricePerShare),
-        isActive: listing.isActive,
-        listingTime: new Date(listing.listingTime.toNumber() * 1000)
-      }));
-      return parsedListings;
+        if (!contract || !propertyId) {
+            console.log("Missing parameters:", { contract, propertyId });
+            return [];
+        }
+
+        const listings = await contract.call('getPropertyListings', [propertyId]);
+        console.log("Raw listings from contract:", listings);
+
+        // Map and filter active listings
+        const activeListings = listings
+            .filter(listing => listing && listing.isActive)
+            .map(listing => ({
+                listingId: listing.listingId?.toString() || '0',
+                propertyId: listing.propertyId?.toString() || propertyId.toString(),
+                seller: listing.seller || '',
+                numberOfShares: listing.numberOfShares?.toString() || '0',
+                pricePerShare: listing.pricePerShare ? ethers.utils.formatEther(listing.pricePerShare) : '0',
+                isActive: Boolean(listing.isActive),
+                listingTime: listing.listingTime?.toString() || '0'
+            }));
+
+        console.log("Formatted active listings:", activeListings);
+        return activeListings;
     } catch (error) {
-      console.error("Failed to get property listings", error);
-      throw error;
+        console.error("Error getting property listings:", error);
+        return [];
     }
   }
   
@@ -661,29 +692,34 @@ const removeLiquidityFunction = async (amount) => {
 
   const getPropertyFunction = async (propertyId) => {
     try {
-      const property = await contract.call('getProperty', [propertyId]);
-      return {
-        propertyId: property.id.toString(),
-        owner: property.owner,
-        title: property.name,
-        description: property.description,
-        price: property.price.toString(),
-        rent: property.rent.toString(),
-        rentPeriod: property.rentPeriod.toString(),
-        image: property.images,
-        propertyAddress: property.propertyAddress,
-        totalShares: property.totalShares.toString(),
-        availableShares: property.availableShares.toString(),
-        rentPool: property.rentPool.toString(),
-        lastRentPayment: property.lastRentPayment.toString(),
-        currentRentPeriodStart: property.currentRentPeriodStart.toString(),
-        currentRentPeriodEnd: property.currentRentPeriodEnd.toString(),
-        isListed: property.isListed,
-        totalRentCollected: property.totalRentCollected.toString()
-      };
+        if (!contract || !propertyId) {
+            console.log("Missing parameters for getPropertyFunction:", { contract, propertyId });
+            return null;
+        }
+
+        const property = await contract.call('getProperty', [propertyId]);
+        console.log("Raw property data:", property);
+
+        // Process the property data
+        const processedProperty = {
+            id: property.id.toString(),
+            owner: property.owner,
+            name: property.name,
+            price: property.price.toString(),
+            totalShares: property.totalShares.toString(),
+            availableShares: property.availableShares.toString(),
+            rent: property.rent.toString(),
+            rentPeriod: property.rentPeriod.toString(),
+            images: property.images, // Make sure this is a valid URL
+            description: property.description,
+            propertyAddress: property.propertyAddress
+        };
+
+        console.log("Processed property:", processedProperty);
+        return [processedProperty]; // Keeping the array format as expected by the marketplace
     } catch (error) {
-      console.error("Error fetching property:", error);
-      throw error;
+        console.error("Error in getPropertyFunction:", error);
+        return null;
     }
   };
 
@@ -761,29 +797,55 @@ const removeLiquidityFunction = async (amount) => {
 
   const getAccruedRentFunction = async (propertyId, shareholder) => {
     try {
+      // Input validation
+      if (!propertyId || !shareholder) {
+        console.log("Missing required parameters:", { propertyId, shareholder });
+        return {
+          accruedRent: "0",
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          lastClaim: new Date()
+        };
+      }
+
       const rentInfo = await contract.call('getAccruedRent', [propertyId, shareholder]);
       
+      // Safely handle the returned values
       return {
-        accruedRent: ethers.utils.formatEther(rentInfo.accruedRent || rentInfo[0]),
-        periodStart: new Date(rentInfo.periodStart?.toNumber() * 1000 || rentInfo[1].toNumber() * 1000),
-        periodEnd: new Date(rentInfo.periodEnd?.toNumber() * 1000 || rentInfo[2].toNumber() * 1000),
-        lastClaim: new Date(rentInfo.lastClaim?.toNumber() * 1000 || rentInfo[3].toNumber() * 1000)
+        accruedRent: rentInfo.accruedRent ? ethers.utils.formatEther(rentInfo.accruedRent) : "0",
+        periodStart: rentInfo.periodStart ? new Date(rentInfo.periodStart.toNumber() * 1000) : new Date(),
+        periodEnd: rentInfo.periodEnd ? new Date(rentInfo.periodEnd.toNumber() * 1000) : new Date(),
+        lastClaim: rentInfo.lastClaim ? new Date(rentInfo.lastClaim.toNumber() * 1000) : new Date()
       };
     } catch (error) {
       console.error("Error getting accrued rent:", error);
-      throw error;
+      // Return safe default values on error
+      return {
+        accruedRent: "0",
+        periodStart: new Date(),
+        periodEnd: new Date(),
+        lastClaim: new Date()
+      };
     }
   };
 
   const getRentPeriodInfo = async (propertyId) => {
     try {
         const data = await contract.call('getRentPeriodStatus', [propertyId]);
-        return {
-            periodStart: new Date(data.periodStart.toNumber() * 1000),
-            periodEnd: new Date(data.periodEnd.toNumber() * 1000),
-            isActive: data.isActive,
-            remainingTime: data.remainingTime.toNumber()
-        };
+        // Only return period info if status is active
+        if (data.isActive) {
+            return {
+                periodStart: new Date(data.periodStart.toNumber() * 1000),
+                periodEnd: new Date(data.periodEnd.toNumber() * 1000),
+                isActive: true,
+                remainingTime: data.remainingTime.toNumber()
+            };
+        } else {
+            return {
+                isActive: false,
+                remainingTime: 0
+            };
+        }
     } catch (error) {
         console.error("Error getting rent period info:", error);
         throw error;

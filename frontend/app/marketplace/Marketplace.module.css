@@ -1,46 +1,66 @@
 .container {
   padding: 2rem;
   max-width: 1200px;
-  margin: 0 auto;
+  margin: 80px auto 0;
+  background: #f5f7fa;
+  min-height: calc(100vh - 80px);
 }
 
-.title {
-  font-size: 2rem;
-  color: #333;
+.filters {
+  display: flex;
+  gap: 1rem;
   margin-bottom: 2rem;
-  text-align: center;
+  flex-wrap: wrap;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.searchInput,
+.filterSelect {
+  padding: 0.75rem;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  min-width: 200px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.searchInput:focus,
+.filterSelect:focus {
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
 }
 
 .listingsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
 }
 
 .listingCard {
   background: white;
   border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .listingCard:hover {
   transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
 .listingHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  padding: 1rem;
   border-bottom: 1px solid #eee;
 }
 
 .listingHeader h2 {
-  font-size: 1.25rem;
-  color: #333;
+  font-size: 1.1rem;
+  color: #1a1a1a;
   margin: 0;
 }
 
@@ -50,107 +70,234 @@
   margin: 0.5rem 0 0 0;
 }
 
+.date {
+  font-size: 0.85rem;
+  color: #888;
+}
+
 .propertyInfo {
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #eee;
+  position: relative;
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  background: #f0f0f0;
 }
 
 .propertyImage {
   width: 100%;
-  height: 200px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 8px;
-  margin-bottom: 0.5rem;
+  transition: transform 0.3s;
+  display: block;
+}
+
+.propertyImage:hover {
+  transform: scale(1.05);
 }
 
 .propertyAddress {
-  font-size: 0.875rem;
-  color: #666;
-  margin: 0.5rem 0;
-}
-
-.date {
-  font-size: 0.875rem;
-  color: #666;
+  padding: 0.75rem;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 0.9rem;
 }
 
 .listingDetails {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  padding: 1rem;
 }
 
 .detail {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.detail:last-child {
+  border-bottom: none;
 }
 
 .detail span:first-child {
   color: #666;
+  font-size: 0.9rem;
 }
 
 .detail span:last-child {
+  color: #1a1a1a;
   font-weight: 500;
-  color: #333;
 }
 
 .address {
   font-family: monospace;
-  background: #f5f5f5;
+  background: #f5f7fa;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
+  font-size: 0.85rem;
 }
 
 .buyButton {
   width: 100%;
-  padding: 0.75rem;
-  margin-top: 1.5rem;
-  background: #2563eb;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  background: #2196f3;
   color: white;
   border: none;
   border-radius: 6px;
-  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  font-weight: 500;
+  transition: background 0.2s;
 }
 
 .buyButton:hover {
-  background: #1d4ed8;
+  background: #1976d2;
 }
 
-.buyButton:disabled {
-  background: #ccc;
-  cursor: not-allowed;
+.buyButton:active {
+  transform: translateY(1px);
 }
 
-.loading {
+.loadingSpinner {
   text-align: center;
-  padding: 2rem;
+  padding: 3rem;
   color: #666;
 }
 
 .error {
+  color: #d32f2f;
   text-align: center;
-  padding: 2rem;
-  color: #dc2626;
+  padding: 1rem;
+  background: #ffebee;
+  border-radius: 8px;
+  margin: 1rem 0;
 }
 
-.noListings {
+.emptyState {
   text-align: center;
-  padding: 2rem;
+  padding: 3rem;
   color: #666;
-  font-size: 1.125rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-@media (max-width: 768px) {
-  .container {
-    padding: 1rem;
-  }
+.noImage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  color: #666;
+  font-size: 0.9rem;
+}
 
-  .listingsGrid {
-    grid-template-columns: 1fr;
-  }
+.inactiveListing {
+  opacity: 0.7;
+  position: relative;
+}
+
+.inactiveOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  z-index: 1;
+}
+
+.buyButton:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.listingId {
+  background-color: #f0f0f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.listingHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.buySection {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-top: 1px solid #eee;
+}
+
+.shareInput {
+    margin-bottom: 1rem;
+}
+
+.sharesInput {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.totalCost {
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #666;
+}
+
+.error {
+    color: #ff4444;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.sellerActions {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.cancelButton {
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.cancelButton:hover {
+    background-color: #cc0000;
+}
+
+.successMessage {
+    color: #4CAF50;
+    background-color: #E8F5E9;
+    padding: 1rem;
+    border-radius: 4px;
+    margin: 1rem 0;
+    text-align: center;
 } 

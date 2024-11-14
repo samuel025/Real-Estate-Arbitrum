@@ -431,16 +431,24 @@ contract RealEstateTokenization {
         require(block.timestamp >= property.currentRentPeriodStart, "Rent period not started");
         require(block.timestamp <= property.currentRentPeriodEnd, "Rent period ended");
 
+        // Add overflow checks for time calculations
+        if (property.currentRentPeriodEnd < property.currentRentPeriodStart) revert("Invalid period");
         uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
+        
         uint256 ownershipDuration = block.timestamp - max(
             property.currentRentPeriodStart, 
             shareholder.lastClaimTimestamp
         );
         
-        // Use total shares for percentage calculation
+        // Safe multiplication checks
+        if (totalShares > type(uint256).max / PRECISION) revert("Overflow");
         uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+        
+        if (property.rentPool > type(uint256).max / shareholderPercentage) revert("Overflow");
         uint256 proratedRent = (property.rentPool * shareholderPercentage * ownershipDuration) 
             / (periodDuration * PRECISION);
+
+        if (proratedRent < shareholder.rentClaimed) revert("Calculation error");
         uint256 unclaimedRent = proratedRent - shareholder.rentClaimed;
 
         if (unclaimedRent == 0) revert NoRentToClaim();
@@ -715,63 +723,54 @@ contract RealEstateTokenization {
         return (periodStart, periodEnd, isActive, remainingTime);
     }
 
-    function listSharesForSale(
-        uint256 _propertyId,
-        uint256 _shares,
-        uint256 _pricePerShare
-    ) external propertyExists(_propertyId) {
+    function listSharesForSale(uint256 _propertyId, uint256 _shares, uint256 _pricePerShare) 
+        external 
+        propertyExists(_propertyId) 
+    {
         Shareholder storage shareholder = shareholders[_propertyId][msg.sender];
-        Property storage property = properties[_propertyId];
 
-        // Input validation with safe checks
-        if (_shares == 0 || _shares > shareholder.sharesOwned)
-            revert InsufficientShares();
-        if (_pricePerShare == 0)
-            revert InvalidPrice();
+        // 1. Enhanced input validation
+        if (_shares == 0) revert InvalidAmount();
+        if (_pricePerShare == 0) revert InvalidPrice();
+
+        // Calculate total shares already listed
+        uint256 totalListedShares = 0;
+        for (uint256 i = 0; i < shareListings.length; i++) {
+            if (shareListings[i].isActive &&
+                shareListings[i].propertyId == _propertyId &&
+                shareListings[i].seller == msg.sender) {
+                totalListedShares += shareListings[i].numberOfShares;
+            }
+        }
+
+        // Check if user has enough unlisted shares
+        if (_shares > shareholder.sharesOwned - totalListedShares) revert InsufficientShares();
         
-        // Check for maximum price to prevent overflow
-        if (_pricePerShare > type(uint256).max / _shares) 
-            revert InvalidPrice();
+        // 2. Check for multiplication overflow in total price calculation
+        unchecked {
+            if (_pricePerShare > type(uint256).max / _shares) 
+                revert InvalidPrice();
+        }
 
-        // Check for existing listing at same price
+        // 3. Update share ownership
+        shareholder.sharesOwned -= _shares;
+
+        // 4. Create or update listing
         bool foundExisting = false;
         uint256 existingListingId;
         
         for (uint256 i = 0; i < shareListings.length; i++) {
-            ShareListing storage listing = shareListings[i];
-            if (listing.isActive &&
-                listing.propertyId == _propertyId &&
-                listing.seller == msg.sender &&
-                listing.pricePerShare == _pricePerShare) {
+            if (shareListings[i].isActive &&
+                shareListings[i].propertyId == _propertyId &&
+                shareListings[i].seller == msg.sender &&
+                shareListings[i].pricePerShare == _pricePerShare) {
                 foundExisting = true;
                 existingListingId = i;
                 break;
             }
         }
 
-        // Handle unclaimed rent first
-        if (block.timestamp <= property.currentRentPeriodEnd && 
-            block.timestamp >= property.currentRentPeriodStart) {
-            
-            uint256 unclaimedRent = calculateUnclaimedRent(_propertyId, msg.sender);
-            if (unclaimedRent > 0) {
-                shareholder.rentClaimed += unclaimedRent;
-                shareholder.lastClaimTimestamp = block.timestamp;
-                
-                (bool success, ) = msg.sender.call{value: unclaimedRent}("");
-                if (!success) revert TransferFailed();
-                
-                emit RentClaimed(_propertyId, msg.sender, unclaimedRent);
-            }
-        }
-
-        // Update shareholder's shares
-        unchecked {
-            shareholder.sharesOwned -= _shares;
-        }
-
         if (foundExisting) {
-            // Add shares to existing listing
             ShareListing storage existingListing = shareListings[existingListingId];
             existingListing.numberOfShares += _shares;
             
@@ -783,7 +782,6 @@ contract RealEstateTokenization {
                 _pricePerShare
             );
         } else {
-            // Create new listing
             uint256 newListingId = shareListings.length;
             shareListings.push(ShareListing({
                 propertyId: _propertyId,
@@ -808,67 +806,78 @@ contract RealEstateTokenization {
     }
 
     function buyListedShares(uint256 _listingId, uint256 _sharesToBuy) external payable {
-        if (_listingId >= shareListings.length || !shareListings[_listingId].isActive)
-            revert InvalidListing();
-
+        // 1. Initial validation
+        if (_listingId >= shareListings.length) revert InvalidListing();
+        
         ShareListing storage listing = shareListings[_listingId];
-        Property storage property = properties[listing.propertyId];
-        
-        // Validate share amount
-        if (_sharesToBuy == 0 || _sharesToBuy > listing.numberOfShares)
-            revert InsufficientShares();
-        
+        if (!listing.isActive) revert InvalidListing();
+        if (_sharesToBuy == 0 || _sharesToBuy > listing.numberOfShares) revert InsufficientShares();
+                
+        // 2. Price validation with overflow check
+        unchecked {
+            if (listing.pricePerShare > type(uint256).max / _sharesToBuy)
+                revert InvalidAmount();
+        }
         uint256 totalCost = _sharesToBuy * listing.pricePerShare;
-        if (msg.value != totalCost)
-            revert InvalidAmount();
 
-        // Calculate platform fee
+        if (msg.value != totalCost) revert InvalidAmount();
+
+        // 3. Calculate platform fee with safe math
         uint256 platformFee = (totalCost * PLATFORM_FEE) / BASIS_POINTS;
         uint256 sellerAmount = totalCost - platformFee;
 
-        // Handle rent distribution if in active rent period
-        if (block.timestamp <= property.currentRentPeriodEnd && 
-            block.timestamp >= property.currentRentPeriodStart) {
+        // 4. Force rent claim if seller is selling all their shares
+        Property storage property = properties[listing.propertyId];
+        if (_sharesToBuy == listing.numberOfShares && 
+            block.timestamp >= property.currentRentPeriodStart && 
+            block.timestamp <= property.currentRentPeriodEnd) {
             
-            uint256 listingDuration = block.timestamp - listing.listingTime;
-            uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
-            uint256 sharePercentage = (_sharesToBuy * PRECISION) / property.totalShares;
-            
-            uint256 sellerRent = (property.rentPool * sharePercentage * listingDuration) 
-                / (periodDuration * PRECISION);
-            
-            if (sellerRent > 0) {
-                property.rentPool -= sellerRent;
-                (bool rentSuccess, ) = payable(listing.seller).call{value: sellerRent}("");
+            uint256 unclaimedRent = calculateUnclaimedRent(listing.propertyId, listing.seller);
+            if (unclaimedRent > 0) {
+                // Update rent claimed status
+                shareholders[listing.propertyId][listing.seller].rentClaimed += unclaimedRent;
+                property.rentPool -= unclaimedRent;
+                
+                // Transfer unclaimed rent to seller
+                (bool rentSuccess, ) = payable(listing.seller).call{value: unclaimedRent}("");
                 if (!rentSuccess) revert TransferFailed();
-                emit RentClaimed(listing.propertyId, listing.seller, sellerRent);
+                
+                // Update last claim timestamp
+                shareholders[listing.propertyId][listing.seller].lastClaimTimestamp = block.timestamp;
             }
-
-            shareholders[listing.propertyId][msg.sender].lastClaimTimestamp = block.timestamp;
         }
 
+        // 5. Update share ownership
+        Shareholder storage buyer = shareholders[listing.propertyId][msg.sender];
+        
+        // Initialize buyer's claim timestamp if first time buying shares
+        if (buyer.sharesOwned == 0) {
+            buyer.lastClaimTimestamp = block.timestamp;
+        }
+        
         // Update shares
-        shareholders[listing.propertyId][msg.sender].sharesOwned += _sharesToBuy;
+        buyer.sharesOwned += _sharesToBuy;
         listing.numberOfShares -= _sharesToBuy;
 
-        // Transfer payment to seller
+        // 6. Transfer payment to seller
         (bool success, ) = payable(listing.seller).call{value: sellerAmount}("");
         if (!success) revert TransferFailed();
 
-        // Deactivate listing if all shares sold
+        // 7. Update listing status
         if (listing.numberOfShares == 0) {
             listing.isActive = false;
         }
 
+        // 8. Emit event
         emit MarketplaceSharesSold(
-            listing.propertyId, 
+            listing.propertyId,
             _listingId,
             listing.seller,
             msg.sender,
             _sharesToBuy,
             totalCost
         );
-    }
+    }   
 
     function updateListingPrice(uint256 _listingId, uint256 _newPricePerShare) external {
         if (_listingId >= shareListings.length) revert InvalidListing();
@@ -955,34 +964,25 @@ contract RealEstateTokenization {
 
     receive() external payable {}
 
-    // Add function to cancel individual listing
+  
     function cancelListing(uint256 _listingId) external {
+        // 1. Initial validation
         if (_listingId >= shareListings.length) revert InvalidListing();
-        ShareListing storage listing = shareListings[_listingId];
-        if (listing.seller != msg.sender) revert NotSeller();
-        if (!listing.isActive) revert InvalidListing();
-
-        // Calculate and transfer accumulated rent before cancelling
-        if (block.timestamp <= properties[listing.propertyId].currentRentPeriodEnd) {
-            uint256 listingDuration = block.timestamp - listing.listingTime;
-            uint256 periodDuration = properties[listing.propertyId].currentRentPeriodEnd - properties[listing.propertyId].currentRentPeriodStart;
-            uint256 sharePercentage = (listing.numberOfShares * PRECISION) / properties[listing.propertyId].totalShares;
-            
-            uint256 accumulatedRent = (properties[listing.propertyId].rentPool * sharePercentage * listingDuration) 
-                / (periodDuration * PRECISION);
-            
-            // Transfer accumulated rent to seller
-            (bool success, ) = payable(listing.seller).call{value: accumulatedRent}("");
-            if (!success) revert TransferFailed();
-            
-            properties[listing.propertyId].rentPool -= accumulatedRent;
-        }
-
-        // Return shares to seller
-        shareholders[listing.propertyId][listing.seller].sharesOwned += listing.numberOfShares;
         
+        ShareListing storage listing = shareListings[_listingId];
+        if (!listing.isActive) revert InvalidListing();
+        if (listing.seller != msg.sender) revert NotSeller();
+
+        // 2. Return shares to seller's owned balance
+        Shareholder storage seller = shareholders[listing.propertyId][msg.sender];
+        seller.sharesOwned += listing.numberOfShares;
+
+        // 3. Deactivate listing
         listing.isActive = false;
-        emit ListingCancelled(_listingId, listing.seller);
+        listing.numberOfShares = 0;  // Clear shares for gas refund
+
+        // 4. Emit event
+        emit ListingCancelled(_listingId, msg.sender);
     }
 
     // Add function to get user's active listings
@@ -1033,21 +1033,66 @@ contract RealEstateTokenization {
         Property storage property = properties[_propertyId];
         Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
         
+        // Early returns for edge cases
+        if (property.totalShares == 0 || property.rentPool == 0) {
+            return 0;
+        }
+        
         if (block.timestamp <= property.currentRentPeriodEnd && 
             block.timestamp >= property.currentRentPeriodStart) {
             
+            // Check for timestamp underflow
+            if (property.currentRentPeriodEnd < property.currentRentPeriodStart) {
+                return 0;
+            }
+            
             uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
-            uint256 ownershipDuration = block.timestamp - max(
+            if (periodDuration == 0) {
+                return 0;
+            }
+            
+            // Get total shares (owned + listed) using getTotalShareholderShares
+            uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
+            if (totalShares == 0) {
+                return 0;
+            }
+
+            // Calculate ownership duration
+            uint256 startTime = max(
                 property.currentRentPeriodStart, 
                 shareholder.lastClaimTimestamp
             );
+            if (block.timestamp < startTime) {
+                return 0;
+            }
             
-            // Use total shares (owned + listed)
-            uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
+            uint256 ownershipDuration = block.timestamp - startTime;
+            
+            // Safe calculations with overflow checks
+            if (totalShares > type(uint256).max / PRECISION) {
+                return 0;
+            }
             uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
-            uint256 proratedRent = (property.rentPool * shareholderPercentage * ownershipDuration) 
-                / (periodDuration * PRECISION);
-                
+            
+            if (property.rentPool > type(uint256).max / shareholderPercentage) {
+                return 0;
+            }
+            uint256 baseRent = (property.rentPool * shareholderPercentage) / PRECISION;
+            
+            if (ownershipDuration > periodDuration) {
+                ownershipDuration = periodDuration;
+            }
+            
+            if (baseRent > type(uint256).max / ownershipDuration) {
+                return 0;
+            }
+            uint256 proratedRent = (baseRent * ownershipDuration) / periodDuration;
+            
+            // Safe subtraction for final unclaimed rent calculation
+            if (proratedRent <= shareholder.rentClaimed) {
+                return 0;
+            }
+            
             return proratedRent - shareholder.rentClaimed;
         }
         
@@ -1175,10 +1220,23 @@ contract RealEstateTokenization {
         Property storage property = properties[_propertyId];
         Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
         
+        // Initialize return values
+        periodStart = property.currentRentPeriodStart;
+        periodEnd = property.currentRentPeriodEnd;
+        lastClaim = shareholder.lastClaimTimestamp;
+        accruedRent = 0;
+
+        // Check if we're in an active rent period and there's rent to claim
         if (block.timestamp <= property.currentRentPeriodEnd && 
-            block.timestamp >= property.currentRentPeriodStart) {
+            block.timestamp >= property.currentRentPeriodStart &&
+            property.rentPool > 0) {  // Add check for rentPool
             
             uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
+            // Prevent division by zero
+            if (periodDuration == 0 || property.totalShares == 0) {
+                return (0, periodStart, periodEnd, lastClaim);
+            }
+
             uint256 ownershipDuration = block.timestamp - max(
                 property.currentRentPeriodStart, 
                 shareholder.lastClaimTimestamp
@@ -1186,25 +1244,34 @@ contract RealEstateTokenization {
             
             // Use total shares for percentage calculation
             uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
-            uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
-            uint256 proratedRent = (property.rentPool * shareholderPercentage * ownershipDuration) 
-                / (periodDuration * PRECISION);
+            if (totalShares > 0) {
+                // Reorder operations to prevent overflow
+                // First calculate percentage with precision
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
                 
-            accruedRent = proratedRent - shareholder.rentClaimed;
-        } else {
-            accruedRent = 0;
+                // Then calculate rent share
+                uint256 rentShare = (property.rentPool * shareholderPercentage) / PRECISION;
+                
+                // Finally calculate time-based portion
+                if (ownershipDuration <= periodDuration) { // Prevent overflow
+                    accruedRent = (rentShare * ownershipDuration) / periodDuration;
+                    
+                    // Safe subtraction
+                    if (accruedRent > shareholder.rentClaimed) {
+                        accruedRent -= shareholder.rentClaimed;
+                    } else {
+                        accruedRent = 0;
+                    }
+                }
+            }
         }
-        
-        periodStart = property.currentRentPeriodStart;
-        periodEnd = property.currentRentPeriodEnd;
-        lastClaim = shareholder.lastClaimTimestamp;
         
         return (accruedRent, periodStart, periodEnd, lastClaim);
     }
 
     // Add a function to get total shares (owned + listed)
     function getTotalShareholderShares(uint256 _propertyId, address _shareholder) 
-        internal 
+        public 
         view 
         returns (uint256) 
     {
@@ -1223,7 +1290,7 @@ contract RealEstateTokenization {
         return ownedShares + listedShares;
     }
 
-    function getAllListings() external view returns (ShareListing[] memory) {
+    function getAllListings() external view returns (ShareListing[] memory, uint256[] memory) {
         uint256 count = 0;
         // First count active listings
         for (uint256 i = 0; i < shareListings.length; i++) {
@@ -1233,16 +1300,42 @@ contract RealEstateTokenization {
         }
         
         ShareListing[] memory activeListings = new ShareListing[](count);
+        uint256[] memory listingIds = new uint256[](count);
         uint256 currentIndex = 0;
         
-        // Fill array with active listings
+        // Fill array with active listings and their IDs
         for (uint256 i = 0; i < shareListings.length; i++) {
             if (shareListings[i].isActive) {
                 activeListings[currentIndex] = shareListings[i];
+                listingIds[currentIndex] = i;
                 currentIndex++;
             }
         }
         
-        return activeListings;
+        return (activeListings, listingIds);
+    }
+
+    // Add this function to debug listings
+    function getListingDetails(uint256 _listingId) external view returns (
+        bool exists,
+        bool isActive,
+        uint256 propertyId,
+        address seller,
+        uint256 numberOfShares,
+        uint256 pricePerShare
+    ) {
+        if (_listingId >= shareListings.length) {
+            return (false, false, 0, address(0), 0, 0);
+        }
+        
+        ShareListing storage listing = shareListings[_listingId];
+        return (
+            true,
+            listing.isActive,
+            listing.propertyId,
+            listing.seller,
+            listing.numberOfShares,
+            listing.pricePerShare
+        );
     }
 }

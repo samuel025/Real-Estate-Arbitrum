@@ -10,7 +10,7 @@ import ReviewModal from '@/components/ReviewModal';
 import Link from 'next/link';
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,7 +20,12 @@ export default function PropertyDetails() {
   const [totalCost, setTotalCost] = useState('0');
   const [shareholdersInfo, setShareholdersInfo] = useState([]);
   const [isRentDue, setIsRentDue] = useState(false);
-  const [rentPeriodStatus, setRentPeriodStatus] = useState(null);
+  const [rentPeriodStatus, setRentPeriodStatus] = useState({
+    isActive: false,
+    periodStart: null,
+    periodEnd: null,
+    remainingTime: 0
+  });
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [hasReviewed, setHasReviewed] = useState(false);
@@ -45,6 +50,16 @@ export default function PropertyDetails() {
     lastClaim: null
   });
   const [propertyListings, setPropertyListings] = useState([]);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [listingsLoading, setListingsLoading] = useState(true);
+  const [listingsError, setListingsError] = useState(null);
+  const [listings, setListings] = useState([]);
+  const [totalListedShares, setTotalListedShares] = useState(0);
+  const [rentStatus, setRentStatus] = useState({
+    isRentDue: false,
+    nextPaymentDate: null,
+    totalRequired: "0"
+  });
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -66,63 +81,93 @@ export default function PropertyDetails() {
     setTotalCost(newTotalCost);
   }, [sharesToBuy, property?.price]);
 
+  const calculateTotalListedShares = useCallback((listings) => {
+    if (!listings || !Array.isArray(listings)) {
+        console.log("No listings available");
+        return 0;
+    }
+    
+    const total = listings.reduce((sum, listing) => {
+        if (listing?.isActive && listing?.propertyId === params.id) {
+            const shares = parseInt(listing.numberOfShares || '0');
+            console.log(`Adding ${shares} shares from listing:`, listing);
+            return sum + (isNaN(shares) ? 0 : shares);
+        }
+        return sum;
+    }, 0);
+    
+    console.log("Total listed shares calculated:", total);
+    return total;
+  }, [params.id]);
+
   const fetchAllData = useCallback(async () => {
     if (!params.id || !contract) return;
     
     try {
-      setIsLoading(true);
-      setError(null);
+        setIsLoading(true);
+        setError(null);
 
-      const [
-        propertyData, 
-        shareholderInfo, 
-        rentDueStatus, 
-        periodStatus, 
-        reviewsData,
-        rentPeriods,
-        listings,
-        hasReviewedStatus
-      ] = await Promise.all([
-        getSinglePropertyFunction(params.id),
-        getShareholderInfoFunction(params.id),
-        checkisRentDueFunction(params.id),
-        getRentPeriodStatus(params.id),
-        getPropertyReviewsFunction(params.id),
-        getRentPeriodsFunction(params.id),
-        getPropertyListingsFunction(params.id),
-        contract.call('hasReviewed', [params.id, address])
-      ]);
+        // Get property data
+        const propertyData = await getSinglePropertyFunction(params.id);
+        setProperty(propertyData?.[0] || null);
 
-      setHasReviewed(hasReviewedStatus);
+        // Get listings with error handling
+        let listings = [];
+        try {
+            listings = await getPropertyListingsFunction(params.id);
+            console.log("Fetched listings:", listings); // Debug log
+        } catch (listingError) {
+            console.error("Error fetching listings:", listingError);
+            listings = [];
+        }
+        
+        setPropertyListings(listings);
+        const totalListed = calculateTotalListedShares(listings);
+        setTotalListedShares(totalListed);
+        console.log("Total listed shares:", totalListed); // Debug log
 
-      if (!propertyData || !propertyData[0]) {
-        setError('Property not found');
-        return;
-      }
+        // Get shareholder info if address exists
+        if (address) {
+            try {
+                const shareholderData = await getShareholderInfoFunction(params.id);
+                setShareholdersInfo(shareholderData || []);
+            } catch (shareholderError) {
+                console.error("Error fetching shareholder info:", shareholderError);
+                setShareholdersInfo([]);
+            }
+        }
 
-      setProperty(propertyData[0]);
-      setShareholdersInfo(shareholderInfo || []);
-      setIsRentDue(rentDueStatus);
-      setRentPeriodStatus(periodStatus);
-      setReviews(reviewsData || []);
-      setRentPeriods(rentPeriods);
-      setPropertyListings(listings);
+        // Add rent period status check
+        try {
+          const rentStatus = await getRentPeriodStatus(params.id);
+          console.log("Rent period status:", rentStatus); // Debug log
+          
+          setRentPeriodStatus({
+            isActive: Boolean(rentStatus.isActive),
+            periodStart: rentStatus.periodStart ? new Date(Number(rentStatus.periodStart) * 1000) : null,
+            periodEnd: rentStatus.periodEnd ? new Date(Number(rentStatus.periodEnd) * 1000) : null,
+            remainingTime: Number(rentStatus.remainingTime || 0)
+          });
+        } catch (rentError) {
+          console.error("Error fetching rent period status:", rentError);
+        }
 
-      if (shareholderInfo && shareholderInfo[0]) {
-        setUnclaimedRent(shareholderInfo[0].UnclaimedRent);
-        setUnclaimedRentAmount(ethers.utils.formatEther(shareholderInfo[0].UnclaimedRent));
-      }
-
+        setDataFetched(true);
     } catch (err) {
-      console.error("Error fetching data:", err);
-      setError(err.message || "Failed to load property");
+        console.error("Error fetching data:", err);
+        setError(err.message || "Failed to load property");
     } finally {
-      setIsLoading(false);
-      setDataFetched(true);
+        setIsLoading(false);
     }
-  }, [params.id, contract, getSinglePropertyFunction, getShareholderInfoFunction, 
-      checkisRentDueFunction, getRentPeriodStatus, getPropertyReviewsFunction, 
-      getRentPeriodsFunction, getPropertyListingsFunction]);
+  }, [
+    params.id, 
+    contract, 
+    address, 
+    getSinglePropertyFunction, 
+    getPropertyListingsFunction,
+    calculateTotalListedShares,
+    getRentPeriodStatus
+  ]);
 
   useEffect(() => {
     fetchAllData();
@@ -133,17 +178,64 @@ export default function PropertyDetails() {
     return 'Claim rent'
   };
 
-  const handleBuyShares = (e) => {
+  const handleInitialSharePurchase = async (e) => {
     e.preventDefault();
-    buySharesFunction({
-      propertyId: property.propertyId,
-      shares: sharesToBuy,
-      price: totalCost.toString()
-    });
+    try {
+      if (!sharesToBuy || sharesToBuy <= 0) {
+        throw new Error("Invalid number of shares");
+      }
+
+      const sharePrice = ethers.utils.parseEther(calculateTotalCost(1));
+      const totalCost = sharePrice.mul(sharesToBuy);
+
+      await buySharesFunction({
+        propertyId: params.id,
+        shares: sharesToBuy,
+        price: ethers.utils.formatEther(totalCost)
+      });
+
+      await fetchAllData();
+      setSuccessMessage("Shares purchased successfully!");
+    } catch (error) {
+      console.error("Failed to buy initial shares:", error);
+      setError(error.message || "Failed to buy shares");
+    }
   };
 
+  const handleBuyListedShares = async (listing) => {
+    try {
+        if (!listing || !listing.listingId) {
+            throw new Error("Invalid listing data");
+        }
+
+        console.log("Attempting to buy shares:", {
+            listingId: listing.listingId,
+            numberOfShares: listing.numberOfShares,
+            pricePerShare: listing.pricePerShare
+        });
+
+        const totalCost = (
+            parseFloat(listing.pricePerShare) * 
+            parseFloat(listing.numberOfShares)
+        ).toString();
+
+        await buyListedSharesFunction(
+            listing.listingId,
+            listing.numberOfShares,
+            totalCost
+        );
+
+        // Refresh the data
+        await fetchAllData();
+        setSuccessMessage("Shares purchased successfully!");
+    } catch (error) {
+        console.error("Failed to buy listed shares:", error);
+        setError(error.message || "Failed to buy shares");
+    }
+  };
 
   const handleClaimRent = async () => {
+    if (!address) return;
     try {
       await claimRentFunction({
         propertyId: params.id,
@@ -158,31 +250,35 @@ export default function PropertyDetails() {
     }
   };
 
-  const handlePayRent = async () => {
-    if (!property) return;
-    
+  const handlePayRent = async (e) => {
+    e.preventDefault();
     try {
-      setIsPayingRent(true);
+      setSellError('');
       
-      // Get the total required amount including any late fees and debt
-      const lateFees = await contract.call('calculateLateFees', [params.id]);
-      const rentStatus = await contract.call('getRentStatus', [params.id]);
+      // Double check if rent is actually due
+      const isRentDue = await contract.call('isRentDue', [params.id]);
+      if (!isRentDue) {
+        setSellError('Rent is not due yet');
+        return;
+      }
+
+      // Get the total required amount including rent, late fees, and any debt
+      const totalRequired = await getTotalRequiredAmount();
       
-      const totalRequired = ethers.BigNumber.from(property.rent)
-        .add(lateFees)
-        .add(rentStatus.totalDebt || 0);
+      // Call payRent with the correct value in the transaction
+      await contract.call(
+        'payRent',
+        [params.id, address],
+        { 
+          value: ethers.utils.parseEther(totalRequired) // Convert ETH amount to Wei
+        }
+      );
 
-      await payRentFunction({
-        propertyId: params.id,
-        rent: totalRequired
-      });
-
-      // Refresh data after successful payment
       await fetchAllData();
+      setSuccessMessage('Rent paid successfully!');
     } catch (error) {
       console.error("Error paying rent:", error);
-    } finally {
-      setIsPayingRent(false);
+      setSellError(error.message || "Failed to pay rent");
     }
   };
 
@@ -220,50 +316,34 @@ export default function PropertyDetails() {
 
   const handleListShares = async (e) => {
     e.preventDefault();
-    setListingError('');
-
     try {
-      // Input validation
-      if (!sharesToSell || sharesToSell <= 0) {
-        setListingError('Please enter a valid number of shares');
-        return;
-      }
+        setSellError('');
 
-      if (!pricePerShare || parseFloat(pricePerShare) <= 0) {
-        setListingError('Please enter a valid price');
-        return;
-      }
+        // Convert shares to number and validate
+        const numberOfShares = parseInt(sharesToSell);
+        if (isNaN(numberOfShares) || numberOfShares <= 0) {
+            throw new Error("Number of shares must be greater than 0");
+        }
 
-      // Ensure price is formatted correctly (max 18 decimals)
-      const formattedPrice = parseFloat(pricePerShare).toFixed(18);
+        // Validate price
+        const priceAsNumber = parseFloat(pricePerShare);
+        if (isNaN(priceAsNumber) || priceAsNumber <= 0) {
+            throw new Error("Invalid price format");
+        }
 
-      console.log("Listing shares with values:", {
-        propertyId: params.id,
-        shares: sharesToSell,
-        price: formattedPrice
-      });
+        await listSharesForSaleFunction(
+            params.id,
+            numberOfShares,  // Use the converted number
+            pricePerShare
+        );
 
-      await listSharesForSaleFunction({
-        propertyId: params.id,
-        shares: sharesToSell,
-        pricePerShare: formattedPrice
-      });
+        setPricePerShare('');
+        setSharesToSell(1);
+        await fetchAllData();
 
-      setSharesToSell(1);
-      setPricePerShare('');
-      alert('Shares listed successfully!');
-      
-      await checkShareListingEligibility();
     } catch (error) {
-      console.error("Full error:", error);
-      
-      // Extract error message
-      let errorMessage = "Failed to list shares: ";
-      if (error.reason) errorMessage += error.reason;
-      else if (error.message) errorMessage += error.message;
-      else errorMessage += "Unknown error occurred";
-      
-      setListingError(errorMessage);
+        console.error("Error listing shares:", error);
+        setSellError(error.message || "Failed to list shares");
     }
   };
 
@@ -316,6 +396,93 @@ export default function PropertyDetails() {
     fetchAccruedRent();
   }, [params.id, address, getAccruedRentFunction]);
 
+  const fetchPropertyListings = async () => {
+    if (!contract || !params.id) return;
+    
+    try {
+        setListingsLoading(true);
+        setListingsError(null);
+        
+        const listings = await getPropertyListingsFunction(params.id);
+        console.log("Fetched listings:", listings);
+        
+        if (Array.isArray(listings)) {
+            setPropertyListings(listings);
+            const totalShares = calculateTotalListedShares(listings);
+            setTotalListedShares(totalShares);
+            console.log("Updated total listed shares:", totalShares);
+        } else {
+            console.error("Invalid listings data:", listings);
+            setListingsError("Failed to load listings format");
+        }
+    } catch (error) {
+        console.error("Error fetching property listings:", error);
+        setListingsError("Failed to load listings");
+    } finally {
+        setListingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPropertyListings();
+  }, [contract, params.id, getPropertyListingsFunction]);
+
+  const fetchListings = async () => {
+    if (!contract) {
+        console.log("Contract not initialized yet");
+        return;
+    }
+
+    try {
+        setListingsLoading(true);
+        const listings = await getActiveListingsFunction();
+        console.log("Fetched listings:", listings);
+        setListings(listings);
+    } catch (error) {
+        console.error("Error fetching listings:", error);
+        setListingsError("Failed to fetch listings");
+    } finally {
+        setListingsLoading(false);
+    }
+  };
+
+  // Modify the useEffect to wait for contract
+  useEffect(() => {
+    if (contract) {
+        fetchListings();
+    }
+  }, [contract]); // Add contract as dependency
+
+  useEffect(() => {
+    const checkRentStatus = async () => {
+        if (!contract || !property || !address) return;
+
+        try {
+            // Check if rent is due
+            const isRentDue = await contract.call('isRentDue', [params.id]);
+            const rentStatusData = await contract.call('getRentStatus', [params.id]);
+            const totalRequired = await getTotalRequiredAmount();
+
+            setRentStatus({
+                isRentDue,
+                nextPaymentDate: rentStatusData.nextPaymentDate,
+                totalRequired
+            });
+
+            console.log("Rent Status:", {
+                isRentDue,
+                rentStatusData,
+                totalRequired
+            });
+
+        } catch (error) {
+            console.error("Error checking rent status:", error);
+        }
+    };
+
+    checkRentStatus();
+  }, [contract, property, address, params.id]);
+
   if (isLoading || !dataFetched) {
     return (
       <>
@@ -349,6 +516,25 @@ export default function PropertyDetails() {
     );
   }
 
+  if (!address) {
+    return (
+      <>
+        <Navbar />
+        <div className={styles.container}>
+          <div className={styles.connectWalletMessage}>
+            <h2>Please Connect Your Wallet</h2>
+            <button 
+              onClick={connect} 
+              className={styles.connectButton}
+            >
+              Connect Wallet
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <Navbar />
@@ -368,16 +554,25 @@ export default function PropertyDetails() {
                   <button 
                     onClick={handlePayRent}
                     className={styles.payRentButton}
-                    disabled={!isRentDue}
-                    title={!isRentDue ? `Rent is not due yet` : "Click to pay rent"}
+                    disabled={!rentStatus.isRentDue}
+                    title={!rentStatus.isRentDue 
+                        ? `Rent is not due yet` 
+                        : `Click to pay rent (${rentStatus.totalRequired} ETH)`}
                   >
-                    Pay Rent ({ethers.utils.formatEther(property.rent)} ETH)
+                    Pay Rent ({rentStatus.totalRequired} ETH)
                   </button>
+                  {!rentStatus.isRentDue && (
+                    <div className={styles.nextPaymentInfo}>
+                        Next payment due: {rentStatus.nextPaymentDate 
+                            ? new Date(rentStatus.nextPaymentDate * 1000).toLocaleDateString()
+                            : 'Not set'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {shareholdersInfo.length > 0 && address !== property.owner && (
+            {shareholdersInfo?.length > 0 && address !== property.owner && (
               <div className={styles.shareholderSection}>
                 <h3>Your Shares</h3>
                 <div className={styles.shareholdersGrid}>
@@ -517,13 +712,13 @@ export default function PropertyDetails() {
                   <div className={styles.detailsColumn}>
                     <div className={styles.detailBox}>
                       <h3>Share Information</h3>
-                      {property.shares && (
+                      {property?.shares && (
                         <div className={styles.detailItem}>
                           <span className={styles.label}>Total Shares:</span>
                           <span>{property.shares}</span>
                         </div>
                       )}
-                      {property.AvailableShares && (
+                      {property?.AvailableShares && (
                         <div className={styles.detailItem}>
                           <span className={styles.label}>Available Shares:</span>
                           <span>{property.AvailableShares}</span>
@@ -531,14 +726,19 @@ export default function PropertyDetails() {
                       )}
                       <div className={styles.detailItem}>
                         <span className={styles.label}>Listed Shares:</span>
-                        <span>{propertyListings?.reduce((total, listing) => 
-                          listing.isActive ? total + parseInt(listing.numberOfShares) : total, 0) || 0}</span>
+                        <span>{totalListedShares}</span>
                       </div>
+                      {shareholdersInfo?.[0] && (
+                        <div className={styles.detailItem}>
+                          <span className={styles.label}>Your Shares:</span>
+                          <span>{shareholdersInfo[0].shares.toString()}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className={styles.detailBox}>
                       <h3>Rent Period Information</h3>
-                      {rentPeriodStatus && (
+                      {rentPeriodStatus ? (
                         <>
                           <div className={styles.detailItem}>
                             <span className={styles.label}>Period Start:</span>
@@ -562,11 +762,17 @@ export default function PropertyDetails() {
                             <div className={styles.detailItem}>
                               <span className={styles.label}>Time Remaining:</span>
                               <span>
-                                {Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60))} days
+                                {Math.max(0, Math.ceil(rentPeriodStatus.remainingTime / (24 * 60 * 60)))} days
                               </span>
                             </div>
                           )}
                         </>
+                      ) : (
+                        <div className={styles.detailItem}>
+                          <span className={`${styles.status} ${styles.inactive}`}>
+                            Loading Rent Period Status...
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -575,7 +781,7 @@ export default function PropertyDetails() {
                 {property?.AvailableShares > 0 && property.owner !== address && address && (
                   <div className={styles.buySection}>
                     <h3>Purchase Shares</h3>
-                    <form onSubmit={handleBuyShares} className={styles.buySharesForm}>
+                    <form onSubmit={handleInitialSharePurchase} className={styles.buySharesForm}>
                       <div className={styles.formGroup}>
                         <label htmlFor="shares">Number of Shares:</label>
                         <input
