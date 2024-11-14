@@ -25,7 +25,7 @@ export const useAppContext = () => {
 
 
 export const AppProvider = ({children}) => {
-  const {contract} = useContract("0x78872C2187e13d3B20f26F0Bd7605944349d1386")
+  const {contract} = useContract("0x3136aF1BaE6744d7EC8abe5bcaF89B5C916E5aD8")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
   const address = useAddress();

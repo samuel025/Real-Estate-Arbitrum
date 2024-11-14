@@ -243,10 +243,10 @@ contract RealEstateTokenization {
         property.description = _description;
         property.propertyAddress = _propertyAddress;
         
-        // Initialize rent period
-        property.currentRentPeriodStart = block.timestamp;
-        property.currentRentPeriodEnd = block.timestamp + (_rentPeriod * SECONDS_PER_DAY);
-        property.lastRentPayment = block.timestamp; // Initialize to prevent late fees on first payment
+        // Initialize with inactive period
+        property.currentRentPeriodStart = 0;
+        property.currentRentPeriodEnd = 0;
+        property.lastRentPayment = 0;
         
         // Initialize rent status
         RentStatus storage status = propertyRentStatus[propertyId];
@@ -723,9 +723,14 @@ contract RealEstateTokenization {
     {
         Property storage property = properties[_propertyId];
         
-        periodStart = property.lastRentPayment;
-        periodEnd = property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
-        isActive = block.timestamp <= periodEnd;
+        // If no rent has been paid yet, return inactive status
+        if (property.lastRentPayment == 0) {
+            return (0, 0, false, 0);
+        }
+        
+        periodStart = property.currentRentPeriodStart;
+        periodEnd = property.currentRentPeriodEnd;
+        isActive = block.timestamp <= periodEnd && block.timestamp >= periodStart;
         
         if (isActive) {
             remainingTime = periodEnd - block.timestamp;
