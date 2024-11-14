@@ -9,6 +9,39 @@ import Navbar from '@/components/Navbar';
 import ReviewModal from '@/components/ReviewModal';
 import Link from 'next/link';
 
+const formatBlockchainDate = (timestamp) => {
+    if (!timestamp) return 'Not set';
+    
+    try {
+        // Convert to number if it's a string
+        const timestampNum = typeof timestamp === 'string' ? 
+            parseInt(timestamp) : Number(timestamp);
+        
+        // Create date object from timestamp (seconds to milliseconds)
+        const date = new Date(timestampNum * 1000);
+        
+        // Validate date
+        if (isNaN(date.getTime())) {
+            console.error('Invalid date from timestamp:', timestamp);
+            return 'Invalid date';
+        }
+
+        // Format the date
+        return new Intl.DateTimeFormat('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'UTC'  // Use UTC to avoid timezone issues
+        }).format(date);
+    } catch (error) {
+        console.error('Error formatting date:', error);
+        return 'Error formatting date';
+    }
+};
+
 export default function PropertyDetails() {
   const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
   const [property, setProperty] = useState(null);
@@ -140,13 +173,21 @@ export default function PropertyDetails() {
         // Add rent period status check
         try {
           const rentStatus = await getRentPeriodStatus(params.id);
-          console.log("Rent period status:", rentStatus); // Debug log
+          console.log("Raw rent period status:", rentStatus); // Debug log
           
+          // Store the raw timestamps
           setRentPeriodStatus({
-            isActive: Boolean(rentStatus.isActive),
-            periodStart: rentStatus.periodStart ? new Date(Number(rentStatus.periodStart) * 1000) : null,
-            periodEnd: rentStatus.periodEnd ? new Date(Number(rentStatus.periodEnd) * 1000) : null,
-            remainingTime: Number(rentStatus.remainingTime || 0)
+              isActive: Boolean(rentStatus.isActive),
+              periodStart: rentStatus.periodStart, // Store raw timestamp
+              periodEnd: rentStatus.periodEnd, // Store raw timestamp
+              remainingTime: Number(rentStatus.remainingTime || 0)
+          });
+
+          console.log("Formatted rent period status:", {
+              periodStart: rentStatus.periodStart ? 
+                  formatBlockchainDate(rentStatus.periodStart) : 'Not set',
+              periodEnd: rentStatus.periodEnd ? 
+                  formatBlockchainDate(rentStatus.periodEnd) : 'Not set'
           });
         } catch (rentError) {
           console.error("Error fetching rent period status:", rentError);
@@ -202,37 +243,6 @@ export default function PropertyDetails() {
     }
   };
 
-  const handleBuyListedShares = async (listing) => {
-    try {
-        if (!listing || !listing.listingId) {
-            throw new Error("Invalid listing data");
-        }
-
-        console.log("Attempting to buy shares:", {
-            listingId: listing.listingId,
-            numberOfShares: listing.numberOfShares,
-            pricePerShare: listing.pricePerShare
-        });
-
-        const totalCost = (
-            parseFloat(listing.pricePerShare) * 
-            parseFloat(listing.numberOfShares)
-        ).toString();
-
-        await buyListedSharesFunction(
-            listing.listingId,
-            listing.numberOfShares,
-            totalCost
-        );
-
-        // Refresh the data
-        await fetchAllData();
-        setSuccessMessage("Shares purchased successfully!");
-    } catch (error) {
-        console.error("Failed to buy listed shares:", error);
-        setError(error.message || "Failed to buy shares");
-    }
-  };
 
   const handleClaimRent = async () => {
     if (!address) return;
@@ -650,7 +660,7 @@ export default function PropertyDetails() {
                           {`${review.reviewer.slice(0, 6)}...${review.reviewer.slice(-4)}`}
                         </span>
                         <span className={styles.reviewDate}>
-                          {new Date(Number(review.timestamp) * 1000).toLocaleDateString()}
+                          {formatBlockchainDate(review.timestamp)}
                         </span>
                       </div>
                     </div>
@@ -743,13 +753,13 @@ export default function PropertyDetails() {
                           <div className={styles.detailItem}>
                             <span className={styles.label}>Period Start:</span>
                             <span>
-                              {rentPeriodStatus.periodStart?.toLocaleDateString() || 'Not started'}
+                              {formatBlockchainDate(rentPeriodStatus.periodStart)}
                             </span>
                           </div>
                           <div className={styles.detailItem}>
                             <span className={styles.label}>Period End:</span>
                             <span>
-                              {rentPeriodStatus.periodEnd?.toLocaleDateString() || 'Not set'}
+                              {formatBlockchainDate(rentPeriodStatus.periodEnd)}
                             </span>
                           </div>
                           <div className={styles.detailItem}>

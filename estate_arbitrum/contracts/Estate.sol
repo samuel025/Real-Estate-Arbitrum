@@ -243,6 +243,19 @@ contract RealEstateTokenization {
         property.description = _description;
         property.propertyAddress = _propertyAddress;
         
+        // Initialize rent period
+        property.currentRentPeriodStart = block.timestamp;
+        property.currentRentPeriodEnd = block.timestamp + (_rentPeriod * SECONDS_PER_DAY);
+        property.lastRentPayment = block.timestamp; // Initialize to prevent late fees on first payment
+        
+        // Initialize rent status
+        RentStatus storage status = propertyRentStatus[propertyId];
+        status.missedPayments = 0;
+        status.totalDebt = 0;
+        status.isDefaulted = false;
+        status.lastDefaultTime = 0;
+        status.lateFees = 0;
+        
         emit PropertyListed(propertyId, _owner, _name, _price, _totalShares);
     }
 
@@ -1165,19 +1178,30 @@ contract RealEstateTokenization {
 
     function calculateLateFees(uint256 _propertyId) public view returns (uint256) {
         Property storage property = properties[_propertyId];
+        RentStatus storage status = propertyRentStatus[_propertyId];
         
+        // No late fees for first payment
+        if (property.lastRentPayment == 0) {
+            return 0;
+        }
+        
+        // No late fees if within current period
         if (block.timestamp <= property.currentRentPeriodEnd) {
             return 0;
         }
-
-        uint256 daysLate = (block.timestamp - property.currentRentPeriodEnd) / SECONDS_PER_DAY;
-        uint256 lateFeePercentage = daysLate * LATE_FEE_RATE;
         
-        // Cap at maximum late fee
+        uint256 timeElapsed = block.timestamp - property.currentRentPeriodEnd;
+        uint256 daysLate = timeElapsed / SECONDS_PER_DAY;
+        
+        if (daysLate == 0) {
+            return 0;
+        }
+        
+        uint256 lateFeePercentage = (daysLate * LATE_FEE_RATE);
         if (lateFeePercentage > MAX_LATE_FEE) {
             lateFeePercentage = MAX_LATE_FEE;
         }
-
+        
         return (property.rent * lateFeePercentage) / BASIS_POINTS;
     }
 

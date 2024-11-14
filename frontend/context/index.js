@@ -25,7 +25,7 @@ export const useAppContext = () => {
 
 
 export const AppProvider = ({children}) => {
-  const {contract} = useContract("0xcB1614aBd245E296BbF990825B32f440cC2F9560")
+  const {contract} = useContract("0x78872C2187e13d3B20f26F0Bd7605944349d1386")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
   const address = useAddress();
@@ -674,16 +674,22 @@ const removeLiquidityFunction = async (amount) => {
 
   const getRentPeriodStatus = async (propertyId) => {
     try {
-      const status = await contract.call('getRentPeriodStatus', [propertyId]);
-      return {
-        periodStart: new Date(status.periodStart * 1000),
-        periodEnd: new Date(status.periodEnd * 1000),
-        isActive: status.isActive,
-        remainingTime: Number(status.remainingTime)
-      };
+        const status = await contract.call('getRentPeriodStatus', [propertyId]);
+        console.log("Raw status from contract:", status); // Debug log
+
+        // Convert BigNumber to number before multiplying
+        const startTimestamp = status.periodStart.toNumber();
+        const endTimestamp = status.periodEnd.toNumber();
+        
+        return {
+            periodStart: startTimestamp,  // Keep as timestamp
+            periodEnd: endTimestamp,      // Keep as timestamp
+            isActive: status.isActive,
+            remainingTime: Number(status.remainingTime)
+        };
     } catch (error) {
-      console.error("Error getting rent period status:", error);
-      throw error;
+        console.error("Error getting rent period status:", error);
+        throw error;
     }
   };
 
