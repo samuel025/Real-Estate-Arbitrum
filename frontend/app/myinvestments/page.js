@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAppContext } from '@/context';
-import styles from './myinvestments.module.css';
+import styles from './MyInvestments.module.css';
 import Link from 'next/link';
 import { ethers } from 'ethers';
 import Navbar from '@/components/Navbar';
