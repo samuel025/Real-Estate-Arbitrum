@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppContext } from '../../../context';
 import { useParams } from 'next/navigation';
 import { ethers } from 'ethers';
@@ -903,3 +903,7 @@ export default function PropertyDetails() {
     </>
   );
 }
+
+export const dynamic = 'force-dynamic';
+
+

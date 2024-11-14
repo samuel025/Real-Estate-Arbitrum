@@ -13,7 +13,7 @@ const nextConfig = {
   reactStrictMode: true,
   
   // Add this line to enable static exports
-  output: 'export',
+  output: 'standalone',
 };
 
 export default nextConfig;
