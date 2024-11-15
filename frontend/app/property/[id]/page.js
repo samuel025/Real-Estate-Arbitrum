@@ -493,6 +493,17 @@ export default function PropertyDetails() {
     checkRentStatus();
   }, [contract, property, address, params.id]);
 
+  // Update the connect button handler
+  const handleConnect = async () => {
+    try {
+      await connect();
+      // The data will be refreshed by the useEffect hooks
+      // No need for additional reloads
+    } catch (error) {
+      console.error("Connection error:", error);
+    }
+  };
+
   if (isLoading || !dataFetched) {
     return (
       <>
@@ -534,7 +545,7 @@ export default function PropertyDetails() {
           <div className={styles.connectWalletMessage}>
             <h2>Please Connect Your Wallet</h2>
             <button 
-              onClick={connect} 
+              onClick={handleConnect} 
               className={styles.connectButton}
             >
               Connect Wallet
@@ -571,13 +582,6 @@ export default function PropertyDetails() {
                   >
                     Pay Rent ({rentStatus.totalRequired} ETH)
                   </button>
-                  {!rentStatus.isRentDue && (
-                    <div className={styles.nextPaymentInfo}>
-                        Next payment due: {rentStatus.nextPaymentDate 
-                            ? new Date(rentStatus.nextPaymentDate * 1000).toLocaleDateString()
-                            : 'Not set'}
-                    </div>
-                  )}
                 </div>
               )}
             </div>

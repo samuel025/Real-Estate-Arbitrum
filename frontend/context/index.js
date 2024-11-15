@@ -7,6 +7,7 @@ import {
     useMetamask,
     useSigner,
     useDisconnect,
+    useContractRead,
 } from "@thirdweb-dev/react";
 
 import { ethers } from "ethers";
@@ -37,19 +38,16 @@ export const AppProvider = ({children}) => {
   const signer = useSigner();
 
   // Store listener functions
-  const handleAccountsChanged = (accounts) => {
+  const handleAccountsChanged = async (accounts) => {
     if (accounts.length === 0) {
-      // Handle disconnection
       disconnect();
     } else {
-      // Handle account change
-      window.location.reload();
+      await fetchAllData();
     }
   };
 
-  const handleChainChanged = (_chainId) => {
-    // Handle chain change by reloading the page
-    window.location.reload();
+  const handleChainChanged = async (_chainId) => {
+    await fetchAllData();
   };
 
   // Safely check for window.ethereum
@@ -75,16 +73,7 @@ export const AppProvider = ({children}) => {
       }
 
       try {
-        // Request accounts explicitly instead of using ethereum.enable()
-        const accounts = await ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-        
-        if (accounts.length === 0) {
-          throw new Error('No accounts found');
-        }
-
-        // Connect with ThirdWeb
+        // Connect with ThirdWeb first
         await connectWithMetamask();
 
         // Check network after successful connection
@@ -99,65 +88,42 @@ export const AppProvider = ({children}) => {
               params: [{ chainId: '0x66eee' }],
             });
           } catch (switchError) {
-            // This error code indicates that the chain has not been added to MetaMask
             if (switchError.code === 4902) {
-              try {
-                await ethereum.request({
-                  method: 'wallet_addEthereumChain',
-                  params: [{
-                    chainId: '0x66eee',
-                    chainName: 'Arbitrum Sepolia',
-                    nativeCurrency: {
-                      name: 'ETH',
-                      symbol: 'ETH',
-                      decimals: 18
-                    },
-                    rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
-                    blockExplorerUrls: ['https://sepolia.arbiscan.io']
-                  }],
-                });
-              } catch (addError) {
-                setConnectionError('Failed to add network');
-                throw addError;
-              }
+              await ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: '0x66eee',
+                  chainName: 'Arbitrum Sepolia',
+                  nativeCurrency: {
+                    name: 'ETH',
+                    symbol: 'ETH',
+                    decimals: 18
+                  },
+                  rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+                  blockExplorerUrls: ['https://sepolia.arbiscan.io']
+                }],
+              });
             } else {
-              setConnectionError('Failed to switch network');
               throw switchError;
             }
           }
         }
 
-        // Setup event listeners
-        const setupListeners = () => {
-          if (ethereum) {
-            ethereum.on('accountsChanged', handleAccountsChanged);
-            ethereum.on('chainChanged', handleChainChanged);
-          }
-        };
-
-        setupListeners();
-
-        // Update user balance
-        if (ethereum.selectedAddress) {
-          const provider = new ethers.providers.Web3Provider(ethereum);
-          const balance = await provider.getBalance(ethereum.selectedAddress);
-          setUserBalance(ethers.utils.formatEther(balance));
+        // Get accounts after network is confirmed
+        const accounts = await ethereum.request({
+          method: 'eth_accounts'
+        });
+        
+        if (accounts.length > 0) {
+          // Connection successful, no need for additional actions
+          return true;
         }
 
       } catch (error) {
-        console.error('Connection error:', error);
-        // Improve error messaging
-        if (error.code === 4001) {
-          setConnectionError('User rejected connection request');
-        } else {
-          setConnectionError(error.message);
-        }
+        console.error("Connection error:", error);
+        setConnectionError(error.message || "Failed to connect");
         throw error;
       }
-    } catch (error) {
-      console.error('Wallet connection failed:', error);
-      setConnectionError(error.message);
-      throw error;
     } finally {
       setIsConnecting(false);
     }
@@ -201,7 +167,7 @@ export const AppProvider = ({children}) => {
       if (signer) {
         try {
           const balance = await signer.getBalance();
-          const formattedBalance = parseFloat(ethers.utils.formatEther(balance)).toFixed(3); // Limit to 3 decimal places
+          const formattedBalance = Number(ethers.utils.formatEther(balance)).toFixed(3);
           setUserBalance(formattedBalance);
         } catch (error) {
           console.error("Error fetching balance:", error);
@@ -256,7 +222,22 @@ export const AppProvider = ({children}) => {
 
   const getPropertiesFunction = async () => {
     try {
-      const properties = await contract.call('getAllProperties');
+      // Use useContractRead for reading data
+      const { data: properties, isLoading, error } = useContractRead(
+        contract,
+        "getAllProperties"
+      );
+
+      if (error) {
+        console.error("Error reading properties:", error);
+        return [];
+      }
+
+      if (!properties || properties.length === 0) {
+        console.log("No properties found");
+        return [];
+      }
+
       const parsedProperties = properties.map((property) => ({
         propertyId: property.id.toString(),
         owner: property.owner,
@@ -267,20 +248,14 @@ export const AppProvider = ({children}) => {
         rentPeriod: property.rentPeriod.toString(),
         image: property.images,
         propertyAddress: property.propertyAddress,
-        totalShares: property.totalShares.toString(),
-        availableShares: property.availableShares.toString(),
-        rentPool: property.rentPool.toString(),
-        lastRentPayment: property.lastRentPayment.toString(),
-        currentRentPeriodStart: property.currentRentPeriodStart.toString(),
-        currentRentPeriodEnd: property.currentRentPeriodEnd.toString(),
-        isListed: property.isListed,
-        totalRentCollected: property.totalRentCollected.toString()
+        totalShares: property.totalShares?.toString(),
+        availableShares: property.availableShares?.toString()
       }));
 
       return parsedProperties;
     } catch (error) {
-      console.error("Error fetching properties:", error);
-      throw error;
+      console.error("Error in getPropertiesFunction:", error);
+      return [];
     }
   };
 

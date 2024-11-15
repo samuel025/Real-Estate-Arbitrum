@@ -47,7 +47,9 @@ export default function Navbar() {
             ) : (
               <>
                 <div className={styles.walletInfo}>
-                  <span className={styles.balanceAmount}>{userBalance} ETH</span>
+                  <span className={styles.balanceAmount}>
+                    {Number(userBalance).toFixed(3)} ETH
+                  </span>
                   <span className={styles.addressText}>
                     {`${address.slice(0, 6)}...${address.slice(-4)}`}
                   </span>

@@ -7,39 +7,49 @@ import Link from 'next/link';
 import { ethers } from 'ethers';
 import Navbar from '../components/Navbar';
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { useContractRead } from "@thirdweb-dev/react";
 
 export default function Home() {
-  const { 
+  const { contract } = useAppContext();
+  
+  // Use useContractRead hook directly in the component
+  const { data: properties, isLoading, error } = useContractRead(
     contract,
-    getPropertiesFunction,
-  } = useAppContext();
+    "getAllProperties"
+  );
 
-  const [properties, setProperties] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const fetchProperties = async () => {
+  // Format ETH values without trailing zeros
+  const formatEth = (value) => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const data = await getPropertiesFunction();
-      setProperties(data || []);
+      const formattedValue = ethers.utils.formatEther(value);
+      // Convert to number and back to string to remove trailing zeros
+      const parsed = parseFloat(formattedValue);
+      // If it's a whole number, don't show decimals
+      if (parsed % 1 === 0) {
+        return parsed.toString();
+      }
+      // Otherwise return the number with natural decimal places
+      return parsed.toString();
     } catch (err) {
-      console.error("Error fetching properties:", err);
-      setError("Failed to load properties");
-      setProperties([]);
-    } finally {
-      setIsLoading(false);
+      console.error("Error formatting ETH value:", err);
+      return "0";
     }
-  }
+  };
 
-  useEffect(() => {
-    if (contract) {
-      fetchProperties();
-    } else {
-      setIsLoading(false);
-    }
-  }, [contract]);
+  // Parse properties data
+  const parsedProperties = properties?.map((property) => ({
+    propertyId: property.id.toString(),
+    owner: property.owner,
+    title: property.name,
+    description: property.description,
+    price: property.price.toString(),
+    rent: property.rent.toString(),
+    rentPeriod: property.rentPeriod.toString(),
+    image: property.images,
+    propertyAddress: property.propertyAddress,
+    totalShares: property.totalShares?.toString(),
+    availableShares: property.availableShares?.toString()
+  })) || [];
 
   return (
     <>
@@ -49,7 +59,7 @@ export default function Home() {
         
         {error && (
           <div className={styles.error}>
-            {error}
+            Failed to load properties
           </div>
         )}
         
@@ -59,34 +69,40 @@ export default function Home() {
           </div>
         ) : (
           <div className={styles.propertiesGrid}>
-            {properties?.map((property) => (
-              <Link 
-                href={`/property/${property.propertyId}`} 
-                key={property.propertyId}
-                className={styles.propertyCard}
-              >
-                <img 
-                  src={property.image} 
-                  alt={property.title} 
-                  className={styles.propertyImage} 
-                />
-                <div className={styles.propertyContent}>
-                  <h3 className={styles.propertyTitle}>{property.title}</h3>
-                  <p className={styles.propertyPrice}>
-                    {ethers.utils.formatEther(property.price)} ETH
-                  </p>
-                  <p className={styles.propertyDescription}>
-                    {property.description}
-                  </p>
-                  <p>Rent: {ethers.utils.formatEther(property.rent)} ETH</p>
-                  <button 
-                    className={styles.buyButton}
-                  >
-                    Buy Shares
-                  </button>
-                </div>
-              </Link>
-            ))}
+            {parsedProperties.length > 0 ? (
+              parsedProperties.map((property) => (
+                <Link 
+                  href={`/property/${property.propertyId}`} 
+                  key={property.propertyId}
+                  className={styles.propertyCard}
+                >
+                  <img 
+                    src={property.image} 
+                    alt={property.title} 
+                    className={styles.propertyImage} 
+                  />
+                  <div className={styles.propertyContent}>
+                    <h3 className={styles.propertyTitle}>{property.title}</h3>
+                    <p className={styles.propertyPrice}>
+                      {formatEth(property.price)} ETH
+                    </p>
+                    <p className={styles.propertyDescription}>
+                      {property.description}
+                    </p>
+                    <p>Rent: {formatEth(property.rent)} ETH</p>
+                    <button 
+                      className={styles.buyButton}
+                    >
+                      Buy Shares
+                    </button>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className={styles.noProperties}>
+                No properties available
+              </div>
+            )}
           </div>
         )}
       </main>
