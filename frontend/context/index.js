@@ -75,9 +75,15 @@ export const AppProvider = ({children}) => {
       }
 
       try {
-        // Enable the wallet first
-        await ethereum.enable();
+        // Request accounts explicitly instead of using ethereum.enable()
+        const accounts = await ethereum.request({
+          method: 'eth_requestAccounts'
+        });
         
+        if (accounts.length === 0) {
+          throw new Error('No accounts found');
+        }
+
         // Connect with ThirdWeb
         await connectWithMetamask();
 
@@ -140,7 +146,12 @@ export const AppProvider = ({children}) => {
 
       } catch (error) {
         console.error('Connection error:', error);
-        setConnectionError(error.message);
+        // Improve error messaging
+        if (error.code === 4001) {
+          setConnectionError('User rejected connection request');
+        } else {
+          setConnectionError(error.message);
+        }
         throw error;
       }
     } catch (error) {

@@ -16,17 +16,29 @@ export default function Home() {
 
   const [properties, setProperties] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const fetchProperties = async () => {
-    setIsLoading(true);
-    const data = await getPropertiesFunction();
-    setProperties(data);
-    setIsLoading(false);
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await getPropertiesFunction();
+      setProperties(data || []);
+    } catch (err) {
+      console.error("Error fetching properties:", err);
+      setError("Failed to load properties");
+      setProperties([]);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
-    setIsLoading(true)
-    if(contract) fetchProperties();
+    if (contract) {
+      fetchProperties();
+    } else {
+      setIsLoading(false);
+    }
   }, [contract]);
 
   return (
@@ -34,6 +46,12 @@ export default function Home() {
       <Navbar />
       <main className={styles.container}>
         <h1>Available Properties</h1>
+        
+        {error && (
+          <div className={styles.error}>
+            {error}
+          </div>
+        )}
         
         {isLoading ? (
           <div className={styles.loadingContainer}>
