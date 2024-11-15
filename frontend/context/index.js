@@ -29,7 +29,7 @@ export const AppProvider = ({children}) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
-  const {contract} = useContract("0x3136aF1BaE6744d7EC8abe5bcaF89B5C916E5aD8")
+  const {contract} = useContract("0x15728BD58b3646f8cb7D062A46F0405eFf0Cc5AD")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
   const address = useAddress();
@@ -234,7 +234,6 @@ export const AppProvider = ({children}) => {
       }
 
       if (!properties || properties.length === 0) {
-        console.log("No properties found");
         return [];
       }
 
@@ -307,7 +306,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
         // Debug the listing before purchase
         const listingDetails = await contract.call('getListingDetails', [listingId]);
-        console.log('Attempting to buy from listing:', listingDetails);
 
         if (!listingDetails.exists || !listingDetails.isActive) {
             throw new Error('Invalid or inactive listing');
@@ -396,12 +394,34 @@ const removeLiquidityFunction = async (amount) => {
   const claimRentFunction = async (formData) => {
     const {propertyId, shareholder} = formData;
     try {
-      const data = await claimRent({
-        args: [propertyId, shareholder]
-      });
-      console.info("contract call success", data);
+        // Validate inputs
+        if (!propertyId || !shareholder) {
+            throw new Error("Missing required parameters");
+        }
+
+        // Ensure shareholder is a valid address
+        if (!ethers.utils.isAddress(shareholder)) {
+            throw new Error("Invalid shareholder address");
+        }
+
+        const data = await claimRent({
+            args: [propertyId, shareholder]
+        });
+
+        // Wait for transaction confirmation
+        await data.wait();
+        console.info("Rent claimed successfully", data);
+        return data;
+
     } catch (error) {
-      console.error("contract call failure", error);
+        console.error("Failed to claim rent:", error);
+        // Handle specific contract errors
+        if (error.message.includes("NoRentToClaim")) {
+            throw new Error("No rent available to claim");
+        } else if (error.message.includes("RentPeriodNotEnded")) {
+            throw new Error("Rent period not ended");
+        }
+        throw error;
     }
   }
 
@@ -511,14 +531,10 @@ const removeLiquidityFunction = async (amount) => {
             console.error("Contract not initialized");
             return [];
         }
-
-        console.log("Getting active listings from contract...");
         const [listings, listingIds] = await contract.call('getAllListings');
-        console.log("Raw response:", { listings, listingIds });
 
         // If no listings found
         if (!listings || listings.length === 0) {
-            console.log("No listings found");
             return [];
         }
 
@@ -533,7 +549,6 @@ const removeLiquidityFunction = async (amount) => {
             listingTime: listing.listingTime.toString()
         }));
 
-        console.log("Processed listings:", processedListings);
         return processedListings;
     } catch (error) {
         console.error("Error getting active listings:", error);
@@ -546,12 +561,10 @@ const removeLiquidityFunction = async (amount) => {
   const getPropertyListingsFunction = async (propertyId) => {
     try {
         if (!contract || !propertyId) {
-            console.log("Missing parameters:", { contract, propertyId });
             return [];
         }
 
         const listings = await contract.call('getPropertyListings', [propertyId]);
-        console.log("Raw listings from contract:", listings);
 
         // Map and filter active listings
         const activeListings = listings
@@ -566,7 +579,6 @@ const removeLiquidityFunction = async (amount) => {
                 listingTime: listing.listingTime?.toString() || '0'
             }));
 
-        console.log("Formatted active listings:", activeListings);
         return activeListings;
     } catch (error) {
         console.error("Error getting property listings:", error);
@@ -667,18 +679,21 @@ const removeLiquidityFunction = async (amount) => {
   const getPropertyReviewsFunction = async (propertyId) => {
     try {
       const reviewData = await contract.call('getPropertyReviews', [propertyId]);
-      console.log('Raw review data:', reviewData);
       
-      if (!reviewData) return [];
+      // Check if reviewData exists and has the expected structure
+      if (!reviewData || !Array.isArray(reviewData)) {
+        return [];
+      }
       
-      const parsedReviews = reviewData.map(review => ({
-        reviewer: review.reviewer,
-        rating: review.rating.toString(),
-        comment: review.comment,
-        timestamp: review.timestamp.toString()
-      }));
+      const parsedReviews = reviewData
+        .filter(review => review && review.reviewer) // Filter out any null or invalid reviews
+        .map(review => ({
+          reviewer: review.reviewer,
+          rating: review.rating.toString(),
+          comment: review.comment,
+          timestamp: review.timestamp.toString()
+        }));
       
-      console.log('Parsed reviews:', parsedReviews);
       return parsedReviews;
     } catch (error) {
       console.error("Could not fetch reviews:", error);
@@ -724,11 +739,7 @@ const removeLiquidityFunction = async (amount) => {
   const getOwnerPropertiesFunction = async () => {
     try {
         if (!address) return [];
-        
-        console.log("Fetching properties for address:", address);
         const ownerProperties = await contract.call('getOwnerProperties', [address]);
-        console.log("Raw owner properties:", ownerProperties);
-        
         const parsedProperties = ownerProperties.map(property => ({
             propertyId: property.id.toString(),
             owner: property.owner,
@@ -743,7 +754,6 @@ const removeLiquidityFunction = async (amount) => {
             availableShares: property.availableShares?.toString()
         }));
         
-        console.log("Parsed properties:", parsedProperties);
         return parsedProperties;
     } catch (error) {
         console.error("Error in getOwnerPropertiesFunction:", error);
@@ -754,9 +764,6 @@ const removeLiquidityFunction = async (amount) => {
   const getRentPeriodStatus = async (propertyId) => {
     try {
         const status = await contract.call('getRentPeriodStatus', [propertyId]);
-        console.log("Raw status from contract:", status); // Debug log
-
-        // Convert BigNumber to number before multiplying
         const startTimestamp = status.periodStart.toNumber();
         const endTimestamp = status.periodEnd.toNumber();
         
@@ -778,12 +785,10 @@ const removeLiquidityFunction = async (amount) => {
   const getPropertyFunction = async (propertyId) => {
     try {
         if (!contract || !propertyId) {
-            console.log("Missing parameters for getPropertyFunction:", { contract, propertyId });
             return null;
         }
 
         const property = await contract.call('getProperty', [propertyId]);
-        console.log("Raw property data:", property);
 
         // Process the property data
         const processedProperty = {
@@ -800,7 +805,6 @@ const removeLiquidityFunction = async (amount) => {
             propertyAddress: property.propertyAddress
         };
 
-        console.log("Processed property:", processedProperty);
         return [processedProperty]; // Keeping the array format as expected by the marketplace
     } catch (error) {
         console.error("Error in getPropertyFunction:", error);
@@ -882,55 +886,64 @@ const removeLiquidityFunction = async (amount) => {
 
   const getAccruedRentFunction = async (propertyId, shareholder) => {
     try {
-      // Input validation
-      if (!propertyId || !shareholder) {
-        console.log("Missing required parameters:", { propertyId, shareholder });
-        return {
-          accruedRent: "0",
-          periodStart: new Date(),
-          periodEnd: new Date(),
-          lastClaim: new Date()
-        };
-      }
+        // Contract initialization check
+        if (!contract) {
+            throw new Error("Contract not initialized");
+        }
 
-      const rentInfo = await contract.call('getAccruedRent', [propertyId, shareholder]);
-      
-      // Safely handle the returned values
-      return {
-        accruedRent: rentInfo.accruedRent ? ethers.utils.formatEther(rentInfo.accruedRent) : "0",
-        periodStart: rentInfo.periodStart ? new Date(rentInfo.periodStart.toNumber() * 1000) : new Date(),
-        periodEnd: rentInfo.periodEnd ? new Date(rentInfo.periodEnd.toNumber() * 1000) : new Date(),
-        lastClaim: rentInfo.lastClaim ? new Date(rentInfo.lastClaim.toNumber() * 1000) : new Date()
-      };
+        // Input validation
+        if (!propertyId || !shareholder) {
+            throw new Error("Missing required parameters");
+        }
+
+        if (!ethers.utils.isAddress(shareholder)) {
+            throw new Error("Invalid shareholder address");
+        }
+
+        const rentInfo = await contract.call('getAccruedRent', [propertyId, shareholder]);
+        
+        // Format the response
+        return {
+            accruedRent: ethers.utils.formatEther(rentInfo.accruedRent), // Convert to ETH
+            accruedRentWei: rentInfo.accruedRent, // Keep original BigNumber
+            periodStart: new Date(rentInfo.periodStart.toNumber() * 1000),
+            periodEnd: new Date(rentInfo.periodEnd.toNumber() * 1000),
+            lastClaim: new Date(rentInfo.lastClaim.toNumber() * 1000),
+            isActive: rentInfo.periodEnd.toNumber() > Math.floor(Date.now() / 1000)
+        };
+
     } catch (error) {
-      console.error("Error getting accrued rent:", error);
-      // Return safe default values on error
-      return {
-        accruedRent: "0",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        lastClaim: new Date()
-      };
+        console.error("Error getting accrued rent:", error);
+        throw error;
     }
   };
 
   const getRentPeriodInfo = async (propertyId) => {
     try {
-        const data = await contract.call('getRentPeriodStatus', [propertyId]);
-        // Only return period info if status is active
-        if (data.isActive) {
-            return {
-                periodStart: new Date(data.periodStart.toNumber() * 1000),
-                periodEnd: new Date(data.periodEnd.toNumber() * 1000),
-                isActive: true,
-                remainingTime: data.remainingTime.toNumber()
-            };
-        } else {
-            return {
-                isActive: false,
-                remainingTime: 0
-            };
-        }
+        // Get property data and accrued rent info
+        const [property, rentInfo] = await Promise.all([
+            contract.call('properties', [propertyId]),
+            contract.call('getAccruedRent', [propertyId, address])
+        ]);
+
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const periodStart = property.currentRentPeriodStart.toNumber();
+        const periodEnd = property.currentRentPeriodEnd.toNumber();
+        
+        // Match contract logic for active status
+        const isActive = (
+            currentTimestamp >= periodStart &&
+            currentTimestamp <= periodEnd &&
+            property.rentPool.gt(0) // Check if rentPool is greater than 0
+        );
+
+        return {
+            periodStart: new Date(periodStart * 1000),
+            periodEnd: new Date(periodEnd * 1000),
+            isActive: isActive,
+            remainingTime: isActive ? periodEnd - currentTimestamp : 0,
+            rentPool: ethers.utils.formatEther(property.rentPool)
+        };
     } catch (error) {
         console.error("Error getting rent period info:", error);
         throw error;

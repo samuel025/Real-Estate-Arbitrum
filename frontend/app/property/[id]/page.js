@@ -42,6 +42,46 @@ const formatBlockchainDate = (timestamp) => {
     }
 };
 
+const formatBigNumber = (value) => {
+  if (!value) return '0';
+  try {
+    // If value is already a string in ETH format, return it
+    if (typeof value === 'string' && value.includes('.')) {
+      return value;
+    }
+    // If value is a BigNumber
+    if (value._isBigNumber) {
+      return ethers.utils.formatEther(value);
+    }
+    // Try to convert to BigNumber first
+    return ethers.utils.formatEther(ethers.BigNumber.from(value));
+  } catch (error) {
+    console.error('Error formatting BigNumber:', error);
+    return '0';
+  }
+};
+
+// Update the formatAccruedRent helper function
+const formatAccruedRent = (value) => {
+  if (!value) return '0';
+  try {
+    // If value is already a formatted string
+    if (typeof value === 'string') {
+      return value;
+    }
+    // If value is a BigNumber
+    if (value._isBigNumber) {
+      return ethers.utils.formatEther(value);
+    }
+    // Try to parse as number
+    const numValue = parseFloat(value);
+    return isNaN(numValue) ? '0' : numValue.toString();
+  } catch (error) {
+    console.error("Error formatting accrued rent:", error);
+    return '0';
+  }
+};
+
 export default function PropertyDetails() {
   const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
   const [property, setProperty] = useState(null);
@@ -93,6 +133,10 @@ export default function PropertyDetails() {
     nextPaymentDate: null,
     totalRequired: "0"
   });
+  const [isListingShares, setIsListingShares] = useState(false);
+  const [listingSuccess, setListingSuccess] = useState('');
+  const [totalUserShares, setTotalUserShares] = useState(0);
+  const [isContractReady, setIsContractReady] = useState(false);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -123,13 +167,11 @@ export default function PropertyDetails() {
     const total = listings.reduce((sum, listing) => {
         if (listing?.isActive && listing?.propertyId === params.id) {
             const shares = parseInt(listing.numberOfShares || '0');
-            console.log(`Adding ${shares} shares from listing:`, listing);
             return sum + (isNaN(shares) ? 0 : shares);
         }
         return sum;
     }, 0);
     
-    console.log("Total listed shares calculated:", total);
     return total;
   }, [params.id]);
 
@@ -148,7 +190,6 @@ export default function PropertyDetails() {
         let listings = [];
         try {
             listings = await getPropertyListingsFunction(params.id);
-            console.log("Fetched listings:", listings); // Debug log
         } catch (listingError) {
             console.error("Error fetching listings:", listingError);
             listings = [];
@@ -157,8 +198,6 @@ export default function PropertyDetails() {
         setPropertyListings(listings);
         const totalListed = calculateTotalListedShares(listings);
         setTotalListedShares(totalListed);
-        console.log("Total listed shares:", totalListed); // Debug log
-
         // Get shareholder info if address exists
         if (address) {
             try {
@@ -173,21 +212,12 @@ export default function PropertyDetails() {
         // Add rent period status check
         try {
           const rentStatus = await getRentPeriodStatus(params.id);
-          console.log("Raw rent period status:", rentStatus); // Debug log
-          
           // Store the raw timestamps
           setRentPeriodStatus({
               isActive: Boolean(rentStatus.isActive),
               periodStart: rentStatus.periodStart, // Store raw timestamp
               periodEnd: rentStatus.periodEnd, // Store raw timestamp
               remainingTime: Number(rentStatus.remainingTime || 0)
-          });
-
-          console.log("Formatted rent period status:", {
-              periodStart: rentStatus.periodStart ? 
-                  formatBlockchainDate(rentStatus.periodStart) : 'Not set',
-              periodEnd: rentStatus.periodEnd ? 
-                  formatBlockchainDate(rentStatus.periodEnd) : 'Not set'
           });
         } catch (rentError) {
           console.error("Error fetching rent period status:", rentError);
@@ -247,16 +277,44 @@ export default function PropertyDetails() {
   const handleClaimRent = async () => {
     if (!address) return;
     try {
+      // Show loading state or disable button
+      const claimButton = document.querySelector('.claimButton');
+      if (claimButton) claimButton.disabled = true;
+
       await claimRentFunction({
         propertyId: params.id,
         shareholder: address
       });
-      const updatedInfo = await getShareholderInfoFunction(params.id);
-      if (updatedInfo && Array.isArray(updatedInfo)) {
-        setShareholdersInfo(updatedInfo);
+
+      // Wait a brief moment for the blockchain to update
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Refresh all relevant data
+      const [updatedShareholderInfo, updatedAccruedRent] = await Promise.all([
+        getShareholderInfoFunction(params.id),
+        getAccruedRentFunction(params.id, address)
+      ]);
+
+      // Update states
+      if (updatedShareholderInfo && Array.isArray(updatedShareholderInfo)) {
+        setShareholdersInfo(updatedShareholderInfo);
       }
+
+      setAccruedRentInfo({
+        accruedRent: updatedAccruedRent.accruedRent,
+        periodStart: updatedAccruedRent.periodStart,
+        periodEnd: updatedAccruedRent.periodEnd,
+        lastClaim: updatedAccruedRent.lastClaim
+      });
+
+      // Re-enable button
+      if (claimButton) claimButton.disabled = false;
+
     } catch (error) {
       console.error("Error claiming rent:", error);
+      // Re-enable button on error
+      const claimButton = document.querySelector('.claimButton');
+      if (claimButton) claimButton.disabled = false;
     }
   };
 
@@ -327,7 +385,9 @@ export default function PropertyDetails() {
   const handleListShares = async (e) => {
     e.preventDefault();
     try {
+        setIsListingShares(true);
         setSellError('');
+        setListingSuccess('');
 
         // Convert shares to number and validate
         const numberOfShares = parseInt(sharesToSell);
@@ -343,17 +403,20 @@ export default function PropertyDetails() {
 
         await listSharesForSaleFunction(
             params.id,
-            numberOfShares,  // Use the converted number
+            numberOfShares,
             pricePerShare
         );
 
         setPricePerShare('');
         setSharesToSell(1);
         await fetchAllData();
+        setListingSuccess(`Successfully listed ${numberOfShares} shares for sale!`);
 
     } catch (error) {
         console.error("Error listing shares:", error);
         setSellError(error.message || "Failed to list shares");
+    } finally {
+        setIsListingShares(false);
     }
   };
 
@@ -386,25 +449,29 @@ export default function PropertyDetails() {
     }
   }, [property]);
 
+  // Update the useEffect for fetching accrued rent
   useEffect(() => {
     const fetchAccruedRent = async () => {
-      if (!params.id || !address) return;
-      
+      if (!contract || !address || !params.id) return;
+
       try {
         const rentInfo = await getAccruedRentFunction(params.id, address);
         setAccruedRentInfo({
-          accruedRent: rentInfo.accruedRent,
-          periodStart: rentInfo.periodStart,
-          periodEnd: rentInfo.periodEnd,
-          lastClaim: rentInfo.lastClaim
+          ...rentInfo,
+          // Ensure we're storing the formatted value
+          accruedRent: formatAccruedRent(rentInfo.accruedRent)
         });
       } catch (error) {
         console.error("Error fetching accrued rent:", error);
       }
     };
 
-    fetchAccruedRent();
-  }, [params.id, address, getAccruedRentFunction]);
+    if (contract && address && params.id) {
+      fetchAccruedRent();
+      const intervalId = setInterval(fetchAccruedRent, 30000);
+      return () => clearInterval(intervalId);
+    }
+  }, [contract, address, params.id]);
 
   const fetchPropertyListings = async () => {
     if (!contract || !params.id) return;
@@ -414,13 +481,11 @@ export default function PropertyDetails() {
         setListingsError(null);
         
         const listings = await getPropertyListingsFunction(params.id);
-        console.log("Fetched listings:", listings);
         
         if (Array.isArray(listings)) {
             setPropertyListings(listings);
             const totalShares = calculateTotalListedShares(listings);
             setTotalListedShares(totalShares);
-            console.log("Updated total listed shares:", totalShares);
         } else {
             console.error("Invalid listings data:", listings);
             setListingsError("Failed to load listings format");
@@ -446,7 +511,6 @@ export default function PropertyDetails() {
     try {
         setListingsLoading(true);
         const listings = await getActiveListingsFunction();
-        console.log("Fetched listings:", listings);
         setListings(listings);
     } catch (error) {
         console.error("Error fetching listings:", error);
@@ -479,12 +543,6 @@ export default function PropertyDetails() {
                 totalRequired
             });
 
-            console.log("Rent Status:", {
-                isRentDue,
-                rentStatusData,
-                totalRequired
-            });
-
         } catch (error) {
             console.error("Error checking rent status:", error);
         }
@@ -497,12 +555,109 @@ export default function PropertyDetails() {
   const handleConnect = async () => {
     try {
       await connect();
-      // The data will be refreshed by the useEffect hooks
-      // No need for additional reloads
+
     } catch (error) {
       console.error("Connection error:", error);
     }
   };
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        if (!params.id || !contract) return;
+        
+        const reviewsData = await getPropertyReviewsFunction(params.id);
+        
+        if (Array.isArray(reviewsData)) {
+          setReviews(reviewsData);
+          
+          // Check if the current user has already reviewed
+          if (address) {
+            const hasUserReviewed = reviewsData.some(
+              review => review.reviewer.toLowerCase() === address.toLowerCase()
+            );
+            setHasReviewed(hasUserReviewed);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching reviews:', error);
+      }
+    };
+
+    fetchReviews();
+  }, [params.id, contract, address]);
+
+  // Add this useEffect for periodic updates
+  useEffect(() => {
+    let intervalId;
+
+    const updateAccruedRent = async () => {
+      if (!params.id || !address || !rentPeriodStatus?.isActive) return;
+
+      try {
+        const rentInfo = await getAccruedRentFunction(params.id, address);
+        setAccruedRentInfo({
+          accruedRent: rentInfo.accruedRent, // Store the raw value
+          periodStart: rentInfo.periodStart,
+          periodEnd: rentInfo.periodEnd,
+          lastClaim: rentInfo.lastClaim
+        });
+      } catch (error) {
+        console.error("Error updating accrued rent:", error);
+      }
+    };
+
+    // Update every 30 seconds if rent period is active
+    if (rentPeriodStatus?.isActive) {
+      intervalId = setInterval(updateAccruedRent, 30000);
+      // Initial update
+      updateAccruedRent();
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [params.id, address, rentPeriodStatus?.isActive, getAccruedRentFunction]);
+
+  // Add this function to calculate total shares
+  const calculateTotalShares = useCallback(async () => {
+    if (!params.id || !address || !contract) return 0;
+    try {
+      const totalShares = await contract.call('getTotalShareholderShares', [params.id, address]);
+      setTotalUserShares(totalShares.toString());
+      return totalShares.toString();
+    } catch (error) {
+      console.error("Error calculating total shares:", error);
+      return 0;
+    }
+  }, [params.id, address, contract]);
+
+  // Add this to your useEffect where you fetch data
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!params.id || !address || !contract) return;
+      try {
+        const [shareholderData, totalShares] = await Promise.all([
+          getShareholderInfoFunction(params.id),
+          calculateTotalShares()
+        ]);
+        setShareholdersInfo(shareholderData);
+        setTotalUserShares(totalShares);
+      } catch (error) {
+        console.error("Error fetching shareholder data:", error);
+      }
+    };
+
+    fetchData();
+  }, [params.id, address, contract, getShareholderInfoFunction, calculateTotalShares]);
+
+  useEffect(() => {
+    if (contract) {
+      setIsContractReady(true);
+    }
+  }, [contract]);
 
   if (isLoading || !dataFetched) {
     return (
@@ -586,50 +741,56 @@ export default function PropertyDetails() {
               )}
             </div>
 
-            {shareholdersInfo?.length > 0 && address !== property.owner && (
+            {totalUserShares > 0 && (
               <div className={styles.shareholderSection}>
                 <h3>Your Shares</h3>
-                <div className={styles.shareholdersGrid}>
-                  {shareholdersInfo.map((holder, index) => (
-                    <div key={index} className={styles.shareholderCard}>
-                      <h4>Information</h4>
-                      <div className={styles.shareholderInfo}>
-                        <div className={styles.detailItem}>
-                          <span className={styles.label}>Shares Owned:</span>
-                          <span>{holder.shares?.toString() || '0'}</span>
+                <div className={styles.shareholderInfo}>
+                  {shareholdersInfo?.length > 0 && address !== property.owner && (
+                    <div className={styles.shareholdersGrid}>
+                      {shareholdersInfo.map((holder, index) => (
+                        <div key={index} className={styles.shareholderCard}>
+                          <h4>Information</h4>
+                          <div className={styles.shareholderInfo}>
+                            <div className={styles.detailItem}>
+                              <span className={styles.label}>Shares Owned:</span>
+                              <span>{holder.shares?.toString() || '0'}</span>
+                            </div>
+                            <div className={styles.detailItem}>
+                              <span className={styles.label}>Shares Listed:</span>
+                              <span>{propertyListings?.reduce((total, listing) => 
+                                listing.isActive && listing.seller === address 
+                                  ? total + parseInt(listing.numberOfShares) 
+                                  : total, 0).toString() || '0'}</span>
+                            </div>
+                            <div className={styles.detailItem}>
+                              <span className={styles.label}>Rent Claimed:</span>
+                              <span>
+                                {holder.rentClaimed ? formatBigNumber(holder.rentClaimed) : '0'} ETH
+                              </span>
+                            </div>
+                            <div className={styles.detailItem}>
+                              <span className={styles.label}>Accrued Rent:</span>
+                              <span>
+                                {accruedRentInfo?.accruedRent || '0'} ETH
+                              </span>
+                            </div>
+                            {parseFloat(formatAccruedRent(accruedRentInfo.accruedRent)) > 0 && (
+                              <button 
+                                onClick={handleClaimRent}
+                                className={styles.claimButton}
+                                disabled={!rentPeriodStatus?.isActive}
+                                title={!rentPeriodStatus?.isActive ? 
+                                  'Rent period not active' : 
+                                  'Click to claim your accrued rent'}
+                              >
+                                Claim Accrued Rent
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className={styles.detailItem}>
-                          <span className={styles.label}>Shares Listed:</span>
-                          <span>{propertyListings?.reduce((total, listing) => 
-                            listing.isActive && listing.seller === address 
-                              ? total + parseInt(listing.numberOfShares) 
-                              : total, 0) || '0'}</span>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span className={styles.label}>Rent Claimed:</span>
-                          <span>
-                            {holder.rentClaimed ? ethers.utils.formatEther(holder.rentClaimed) : '0'} ETH
-                          </span>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span className={styles.label}>Accrued Rent:</span>
-                          <span>{accruedRentInfo.accruedRent || '0'} ETH</span>
-                        </div>
-                        {parseFloat(accruedRentInfo.accruedRent) > 0 && (
-                          <button 
-                            onClick={handleClaimRent}
-                            className={styles.claimButton}
-                            disabled={!rentPeriodStatus?.isActive}
-                            title={!rentPeriodStatus?.isActive ? 
-                              `Rent period not active` : 
-                              "Click to claim your accrued rent"}
-                          >
-                            Claim Accrued Rent
-                          </button>
-                        )}
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
@@ -646,10 +807,11 @@ export default function PropertyDetails() {
                   </button>
                 )}
               </div>
-              {reviews && reviews.length > 0 ? (
+              
+              {Array.isArray(reviews) && reviews.length > 0 ? (
                 <div className={styles.reviewsGrid}>
                   {reviews.map((review, index) => (
-                    <div key={index} className={styles.reviewCard}>
+                    <div key={`${review.reviewer}-${index}`} className={styles.reviewCard}>
                       <div className={styles.reviewRating}>
                         {[...Array(parseInt(review.rating))].map((_, i) => (
                           <span key={i} className={`${styles.star} ${styles.filled}`}>★</span>
@@ -837,6 +999,7 @@ export default function PropertyDetails() {
                 {property.owner !== address && address && userShares > 0 && (
                   <div className={styles.sellSection}>
                     {listingError && <div className={styles.errorMessage}>{listingError}</div>}
+                    {listingSuccess && <div className={styles.successMessage}>{listingSuccess}</div>}
                     
                     <h3>List Shares for Sale</h3>
                     <form onSubmit={handleListShares} className={styles.sellSharesForm}>
@@ -892,8 +1055,12 @@ export default function PropertyDetails() {
                         </div>
                       </div>
 
-                      <button type="submit" className={styles.listButton}>
-                        List Shares for Sale
+                      <button 
+                        type="submit" 
+                        className={styles.listButton}
+                        disabled={isListingShares}
+                      >
+                        {isListingShares ? 'Listing Shares...' : 'List Shares for Sale'}
                       </button>
                     </form>
                   </div>

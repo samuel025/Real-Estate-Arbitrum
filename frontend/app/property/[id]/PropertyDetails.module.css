@@ -927,3 +927,24 @@
 .connectButton:hover {
   background-color: #45a049;
 }
+
+.successMessage {
+  background-color: #4caf50;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.errorMessage {
+  background-color: #f44336;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.listButton:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
