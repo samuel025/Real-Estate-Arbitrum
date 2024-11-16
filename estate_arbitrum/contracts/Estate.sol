@@ -131,6 +131,9 @@ contract RealEstateTokenization {
     uint256 public constant LATE_FEE_RATE = 10; // 0.1% per day in basis points
     uint256 public constant MAX_LATE_FEE = 3000; // Maximum 30% late fee
 
+    // Add a mapping to track rent claimed per period
+    mapping(uint256 => mapping(address => mapping(uint256 => uint256))) public periodRentClaimed;
+
     constructor() {
         contractOwner = msg.sender;
     }
@@ -430,54 +433,74 @@ contract RealEstateTokenization {
      * @dev Claim available rent
      */
     function claimRent(
-        uint256 _propertyId,
-        address payable _shareholder
+    uint256 _propertyId,
+    address payable _shareholder
     ) external propertyExists(_propertyId) {
-        Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
         Property storage property = properties[_propertyId];
+        Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
 
         // Check if shareholder has any shares (owned or listed)
         uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
         if (totalShares == 0) revert InsufficientShares();
-        if (property.rentPool == 0) revert NoRentToClaim();
 
-        require(block.timestamp >= property.currentRentPeriodStart, "Rent period not started");
-        require(block.timestamp <= property.currentRentPeriodEnd, "Rent period ended");
+        // Calculate unclaimed rent from previous period if exists
+        uint256 previousPeriodRent = 0;
+        if (property.currentRentPeriodStart > 0 && 
+            shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
+            
+            // Calculate rent from previous period
+            uint256 previousPeriodEnd = property.currentRentPeriodStart;
+            uint256 previousPeriodStart = previousPeriodEnd - (property.rentPeriod * SECONDS_PER_DAY);
+            
+            if (shareholder.lastClaimTimestamp < previousPeriodStart) {
+                // If never claimed in previous period, get full share
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+                previousPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+            } else {
+                // Get partial share based on time in previous period
+                uint256 timeInPreviousPeriod = previousPeriodEnd - shareholder.lastClaimTimestamp;
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+                uint256 fullPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+                previousPeriodRent = (fullPeriodRent * timeInPreviousPeriod) / (property.rentPeriod * SECONDS_PER_DAY);
+            }
+        }
 
-        // Add overflow checks for time calculations
-        if (property.currentRentPeriodEnd < property.currentRentPeriodStart) revert("Invalid period");
-        uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
-        
-        uint256 ownershipDuration = block.timestamp - max(
-            property.currentRentPeriodStart, 
-            shareholder.lastClaimTimestamp
-        );
-        
-        // Safe multiplication checks
-        if (totalShares > type(uint256).max / PRECISION) revert("Overflow");
-        uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
-        
-        if (property.rentPool > type(uint256).max / shareholderPercentage) revert("Overflow");
-        uint256 proratedRent = (property.rentPool * shareholderPercentage * ownershipDuration) 
-            / (periodDuration * PRECISION);
+        // Calculate current period rent
+        uint256 currentPeriodRent = 0;
+        if (block.timestamp >= property.currentRentPeriodStart && 
+            block.timestamp <= property.currentRentPeriodEnd &&
+            property.rentPool > 0) {
+            
+            uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
+            if (periodDuration > 0) {
+                uint256 startTime = max(
+                    property.currentRentPeriodStart,
+                    shareholder.lastClaimTimestamp
+                );
+                uint256 ownershipDuration = block.timestamp - startTime;
+                
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+                uint256 rentShare = (property.rentPool * shareholderPercentage) / PRECISION;
+                currentPeriodRent = (rentShare * ownershipDuration) / periodDuration;
+            }
+        }
 
-        if (proratedRent < shareholder.rentClaimed) revert("Calculation error");
-        uint256 unclaimedRent = proratedRent - shareholder.rentClaimed;
-
-        if (unclaimedRent == 0) revert NoRentToClaim();
+        uint256 totalRentToClaim = previousPeriodRent + currentPeriodRent;
+        if (totalRentToClaim == 0) revert NoRentToClaim();
 
         // Update state
-        shareholder.rentClaimed += unclaimedRent;
-        property.rentPool -= unclaimedRent;
+        property.rentPool -= totalRentToClaim;
         shareholder.lastClaimTimestamp = block.timestamp;
+        shareholder.rentClaimed += totalRentToClaim;  // Track claimed rent
+        property.totalRentCollected += totalRentToClaim;  // Update total rent collected
 
         // Transfer rent
-        (bool success, ) = _shareholder.call{value: unclaimedRent}("");
+        (bool success, ) = _shareholder.call{value: totalRentToClaim}("");
         if (!success) revert TransferFailed();
 
-        emit RentClaimed(_propertyId, _shareholder, unclaimedRent);
+        emit RentClaimed(_propertyId, _shareholder, totalRentToClaim);
     }
-
+    
     /**
      * @dev Submit a review for a property
      */
@@ -573,27 +596,66 @@ contract RealEstateTokenization {
         });
     }
 
-    function getShareholderInfo(uint256 _propertyId, address _shareholder) 
-        external 
-        view 
-        propertyExists(_propertyId) 
-        returns (
-            uint256 shares,
-            uint256 rentClaimed,
-            uint256 unclaimedRent
-        ) {
-            Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
-            Property storage property = properties[_propertyId];
-            
-            shares = shareholder.sharesOwned;
-            rentClaimed = shareholder.rentClaimed;
-            
-            uint256 shareholderPercentage = (shareholder.sharesOwned * PRECISION) / property.totalShares;
-            uint256 totalEntitledRent = (property.rentPool * shareholderPercentage) / PRECISION;
-            unclaimedRent = totalEntitledRent - shareholder.rentClaimed;
-            
-            return (shares, rentClaimed, unclaimedRent);
+    function getShareholderInfo(
+    uint256 _propertyId, 
+    address _shareholder
+    ) external view propertyExists(_propertyId) returns (
+        uint256 shares,
+        uint256 rentClaimed,
+        uint256 unclaimedRent
+    ) {
+        Property storage property = properties[_propertyId];
+        Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
+        
+        // Get total shares (owned + listed)
+        shares = getTotalShareholderShares(_propertyId, _shareholder);
+        rentClaimed = shareholder.rentClaimed;
+        
+        // Calculate unclaimed rent using the same logic as getAccruedRent
+        if (shares > 0 && property.rentPool > 0) {
+            // Calculate previous period rent if unclaimed
+            uint256 previousPeriodRent = 0;
+            if (property.currentRentPeriodStart > 0 && 
+                shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
+                
+                uint256 previousPeriodEnd = property.currentRentPeriodStart;
+                uint256 previousPeriodStart = previousPeriodEnd - (property.rentPeriod * SECONDS_PER_DAY);
+                
+                if (shareholder.lastClaimTimestamp < previousPeriodStart) {
+                    uint256 shareholderPercentage = (shares * PRECISION) / property.totalShares;
+                    previousPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+                } else {
+                    uint256 timeInPreviousPeriod = previousPeriodEnd - shareholder.lastClaimTimestamp;
+                    uint256 shareholderPercentage = (shares * PRECISION) / property.totalShares;
+                    uint256 fullPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+                    previousPeriodRent = (fullPeriodRent * timeInPreviousPeriod) / (property.rentPeriod * SECONDS_PER_DAY);
+                }
+            }
+
+            // Calculate current period rent
+            uint256 currentPeriodRent = 0;
+            if (block.timestamp >= property.currentRentPeriodStart && 
+                block.timestamp <= property.currentRentPeriodEnd) {
+                
+                uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
+                if (periodDuration > 0) {
+                    uint256 startTime = max(
+                        property.currentRentPeriodStart,
+                        shareholder.lastClaimTimestamp
+                    );
+                    uint256 ownershipDuration = block.timestamp - startTime;
+                    
+                    uint256 shareholderPercentage = (shares * PRECISION) / property.totalShares;
+                    uint256 rentShare = (property.rentPool * shareholderPercentage) / PRECISION;
+                    currentPeriodRent = (rentShare * ownershipDuration) / periodDuration;
+                }
+            }
+
+            unclaimedRent = previousPeriodRent + currentPeriodRent;
         }
+
+        return (shares, rentClaimed, unclaimedRent);
+    }
 
     function getPropertyReviews(uint256 _propertyId) 
         external 
@@ -615,14 +677,16 @@ contract RealEstateTokenization {
         return block.timestamp >= property.lastRentPayment + (property.rentPeriod * SECONDS_PER_DAY);
     }
 
+
+
     /**
      * @dev Get all properties where the given address is a shareholder
      */
     function getShareholderProperties(address _shareholder) external view returns (PropertyInfo[] memory) {
-        // First count the number of properties where user is shareholder
+    // First count the number of properties where user is shareholder
         uint256 count = 0;
         for (uint256 i = 1; i < propertyIdCounter; i++) {
-            if (properties[i].isListed && shareholders[i][_shareholder].sharesOwned > 0) {
+            if (properties[i].isListed && getTotalShareholderShares(i, _shareholder) > 0) {
                 count++;
             }
         }
@@ -633,7 +697,7 @@ contract RealEstateTokenization {
         // Fill array with properties where user is shareholder
         uint256 currentIndex = 0;
         for (uint256 i = 1; i < propertyIdCounter; i++) {
-            if (properties[i].isListed && shareholders[i][_shareholder].sharesOwned > 0) {
+            if (properties[i].isListed && getTotalShareholderShares(i, _shareholder) > 0) {
                 Property storage prop = properties[i];
                 shareholderProperties[currentIndex] = PropertyInfo({
                     id: prop.id,
@@ -662,10 +726,45 @@ contract RealEstateTokenization {
         return shareholderProperties;
     }
 
+
+    function getRentPeriodStatus(uint256 _propertyId) 
+        external 
+        view 
+        propertyExists(_propertyId) 
+        returns (
+            uint256 periodStart,
+            uint256 periodEnd,
+            bool isActive,
+            uint256 remainingTime
+        ) 
+    {
+        Property storage property = properties[_propertyId];
+        
+        // If no rent has been paid yet, return inactive status
+        if (property.lastRentPayment == 0) {
+            return (0, 0, false, 0);
+        }
+        
+        periodStart = property.currentRentPeriodStart;
+        periodEnd = property.currentRentPeriodEnd;
+        isActive = block.timestamp <= periodEnd && block.timestamp >= periodStart;
+        
+        if (isActive) {
+            remainingTime = periodEnd - block.timestamp;
+        } else {
+            remainingTime = 0;
+        }
+        
+        return (periodStart, periodEnd, isActive, remainingTime);
+    }
+
+
+
+
     /**
      * @dev Get all properties listed by a specific owner
      */
-    function getOwnerProperties(address _owner) external view returns (PropertyInfo[] memory) {
+   function getOwnerProperties(address _owner) external view returns (PropertyInfo[] memory) {
         // First count the number of properties owned
         uint256 count = 0;
         for (uint256 i = 1; i < propertyIdCounter; i++) {
@@ -707,38 +806,6 @@ contract RealEstateTokenization {
         }
         
         return ownerProperties;
-    }
-
-    // Add a function to get the current rent period status
-    function getRentPeriodStatus(uint256 _propertyId) 
-        external 
-        view 
-        propertyExists(_propertyId) 
-        returns (
-            uint256 periodStart,
-            uint256 periodEnd,
-            bool isActive,
-            uint256 remainingTime
-        ) 
-    {
-        Property storage property = properties[_propertyId];
-        
-        // If no rent has been paid yet, return inactive status
-        if (property.lastRentPayment == 0) {
-            return (0, 0, false, 0);
-        }
-        
-        periodStart = property.currentRentPeriodStart;
-        periodEnd = property.currentRentPeriodEnd;
-        isActive = block.timestamp <= periodEnd && block.timestamp >= periodStart;
-        
-        if (isActive) {
-            remainingTime = periodEnd - block.timestamp;
-        } else {
-            remainingTime = 0;
-        }
-        
-        return (periodStart, periodEnd, isActive, remainingTime);
     }
 
     function listSharesForSale(uint256 _propertyId, uint256 _shares, uint256 _pricePerShare) 
@@ -1183,7 +1250,6 @@ contract RealEstateTokenization {
 
     function calculateLateFees(uint256 _propertyId) public view returns (uint256) {
         Property storage property = properties[_propertyId];
-        RentStatus storage status = propertyRentStatus[_propertyId];
         
         // No late fees for first payment
         if (property.lastRentPayment == 0) {
@@ -1235,68 +1301,69 @@ contract RealEstateTokenization {
         }
     }
 
-    function getAccruedRent(uint256 _propertyId, address _shareholder) 
-        external 
-        view 
-        propertyExists(_propertyId) 
-        returns (
-            uint256 accruedRent,
-            uint256 periodStart,
-            uint256 periodEnd,
-            uint256 lastClaim
-        ) 
-    {
+    function getAccruedRent(
+    uint256 _propertyId, 
+    address _shareholder
+    ) external view propertyExists(_propertyId) returns (
+        uint256 accruedRent,
+        uint256 periodStart,
+        uint256 periodEnd,
+        uint256 lastClaim
+    ) {
         Property storage property = properties[_propertyId];
         Shareholder storage shareholder = shareholders[_propertyId][_shareholder];
         
-        // Initialize return values
         periodStart = property.currentRentPeriodStart;
         periodEnd = property.currentRentPeriodEnd;
         lastClaim = shareholder.lastClaimTimestamp;
-        accruedRent = 0;
+        
+        uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
+        if (totalShares == 0 || property.rentPool == 0) {  // Added rentPool check
+            return (0, periodStart, periodEnd, lastClaim);
+        }
 
-        // Check if we're in an active rent period and there's rent to claim
-        if (block.timestamp <= property.currentRentPeriodEnd && 
-            block.timestamp >= property.currentRentPeriodStart &&
-            property.rentPool > 0) {  // Add check for rentPool
+        // Calculate previous period rent if unclaimed
+        uint256 previousPeriodRent = 0;
+        if (property.currentRentPeriodStart > 0 && 
+            shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
             
-            uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
-            // Prevent division by zero
-            if (periodDuration == 0 || property.totalShares == 0) {
-                return (0, periodStart, periodEnd, lastClaim);
-            }
-
-            uint256 ownershipDuration = block.timestamp - max(
-                property.currentRentPeriodStart, 
-                shareholder.lastClaimTimestamp
-            );
+            uint256 previousPeriodEnd = property.currentRentPeriodStart;
+            uint256 previousPeriodStart = previousPeriodEnd - (property.rentPeriod * SECONDS_PER_DAY);
             
-            // Use total shares for percentage calculation
-            uint256 totalShares = getTotalShareholderShares(_propertyId, _shareholder);
-            if (totalShares > 0) {
-                // Reorder operations to prevent overflow
-                // First calculate percentage with precision
+            if (shareholder.lastClaimTimestamp < previousPeriodStart) {
                 uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
-                
-                // Then calculate rent share
-                uint256 rentShare = (property.rentPool * shareholderPercentage) / PRECISION;
-                
-                // Finally calculate time-based portion
-                if (ownershipDuration <= periodDuration) { // Prevent overflow
-                    accruedRent = (rentShare * ownershipDuration) / periodDuration;
-                    
-                    // Safe subtraction
-                    if (accruedRent > shareholder.rentClaimed) {
-                        accruedRent -= shareholder.rentClaimed;
-                    } else {
-                        accruedRent = 0;
-                    }
-                }
+                previousPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+            } else {
+                uint256 timeInPreviousPeriod = previousPeriodEnd - shareholder.lastClaimTimestamp;
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+                uint256 fullPeriodRent = (property.rentPool * shareholderPercentage) / PRECISION;
+                previousPeriodRent = (fullPeriodRent * timeInPreviousPeriod) / (property.rentPeriod * SECONDS_PER_DAY);
             }
         }
-        
+
+        // Calculate current period rent
+        uint256 currentPeriodRent = 0;
+        if (block.timestamp >= property.currentRentPeriodStart &&  // Changed order to match claimRent
+            block.timestamp <= property.currentRentPeriodEnd &&
+            property.rentPool > 0) {  // Added rentPool check
+            
+            uint256 periodDuration = property.currentRentPeriodEnd - property.currentRentPeriodStart;
+            if (periodDuration > 0) {
+                uint256 startTime = max(
+                    property.currentRentPeriodStart,
+                    shareholder.lastClaimTimestamp
+                );
+                uint256 ownershipDuration = block.timestamp - startTime;  // Changed variable name
+                
+                uint256 shareholderPercentage = (totalShares * PRECISION) / property.totalShares;
+                uint256 rentShare = (property.rentPool * shareholderPercentage) / PRECISION;
+                currentPeriodRent = (rentShare * ownershipDuration) / periodDuration;
+            }
+        }
+
+        accruedRent = previousPeriodRent + currentPeriodRent;
         return (accruedRent, periodStart, periodEnd, lastClaim);
-    }
+    }   
 
     // Add a function to get total shares (owned + listed)
     function getTotalShareholderShares(uint256 _propertyId, address _shareholder) 

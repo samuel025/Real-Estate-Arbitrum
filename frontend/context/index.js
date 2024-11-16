@@ -37,17 +37,82 @@ export const AppProvider = ({children}) => {
   const disconnect = useDisconnect();
   const signer = useSigner();
 
-  // Store listener functions
+  // Set up event listeners when component mounts
+  useEffect(() => {
+    const ethereum = getEthereum();
+    if (ethereum) {
+      // Add event listeners
+      ethereum.on('accountsChanged', handleAccountsChanged);
+      ethereum.on('chainChanged', handleChainChanged);
+
+      // Check initial connection
+      const checkConnection = async () => {
+        try {
+          const accounts = await ethereum.request({
+            method: 'eth_accounts'
+          });
+          
+          if (accounts.length > 0) {
+            // Check if we're on the correct network
+            const chainId = await ethereum.request({ 
+              method: 'eth_chainId' 
+            });
+
+            if (chainId !== '0x66eee') {
+              await ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: '0x66eee' }],
+              });
+            }
+            
+            // Connect with ThirdWeb
+            await connectWithMetamask();
+          }
+        } catch (error) {
+          console.error('Error checking connection:', error);
+        }
+      };
+
+      checkConnection();
+    }
+
+    // Cleanup function
+    return () => {
+      if (ethereum) {
+        ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Update handleAccountsChanged to properly handle disconnection
   const handleAccountsChanged = async (accounts) => {
     if (accounts.length === 0) {
+      // Handle disconnection
       disconnect();
+      // You might want to update your UI state here
     } else {
-      await fetchAllData();
+      // Handle account change
+      const ethereum = getEthereum();
+      if (ethereum) {
+        const chainId = await ethereum.request({ 
+          method: 'eth_chainId' 
+        });
+        
+        if (chainId !== '0x66eee') {
+          await connect(); // This will handle network switching
+        }
+      }
     }
   };
 
+  // Update handleChainChanged to properly handle network changes
   const handleChainChanged = async (_chainId) => {
-    await fetchAllData();
+    if (_chainId !== '0x66eee') {
+      await connect(); // This will handle network switching
+    }
+    // Optionally refresh the page as recommended by MetaMask
+    window.location.reload();
   };
 
   // Safely check for window.ethereum
@@ -128,38 +193,6 @@ export const AppProvider = ({children}) => {
       setIsConnecting(false);
     }
   };
-
-  // Check initial connection on mount
-  useEffect(() => {
-    const checkConnection = async () => {
-      const ethereum = getEthereum();
-      if (ethereum) {
-        try {
-          const accounts = await ethereum.request({
-            method: 'eth_accounts'
-          });
-          if (accounts.length > 0) {
-            connect();
-          }
-        } catch (error) {
-          console.error('Error checking connection:', error);
-        }
-      }
-    };
-
-    checkConnection();
-  }, []);
-
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      const ethereum = getEthereum();
-      if (ethereum) {
-        ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        ethereum.removeListener('chainChanged', handleChainChanged);
-      }
-    };
-  }, []);
 
   const [userBalance, setUserBalance] = useState("");
   useEffect(() => {

@@ -352,13 +352,39 @@ export default function PropertyDetails() {
 
   const handleReviewSubmit = async (rating, comment) => {
     try {
+      // Submit the review
       await submitReviewFunction({
         propertyId: params.id,
         rating,
         comment
       });
+
+      // Optimistically update the reviews state
+      const newReview = {
+        reviewer: address,
+        rating: rating,
+        comment: comment,
+        timestamp: Math.floor(Date.now() / 1000) // Current timestamp in seconds
+      };
+
+      setReviews(prevReviews => [...prevReviews, newReview]);
+      setHasReviewed(true);
+      setIsReviewModalOpen(false);
+
+      // Optional: Fetch the actual updated data from the blockchain
+      const updatedReviews = await getPropertyReviewsFunction(params.id);
+      if (Array.isArray(updatedReviews)) {
+        setReviews(updatedReviews);
+      }
+
     } catch (error) {
       console.error("Error submitting review:", error);
+      // If there's an error, refresh the reviews to ensure correct state
+      const updatedReviews = await getPropertyReviewsFunction(params.id);
+      if (Array.isArray(updatedReviews)) {
+        setReviews(updatedReviews);
+        setHasReviewed(false); // Reset hasReviewed since the submission failed
+      }
     }
   };
 
