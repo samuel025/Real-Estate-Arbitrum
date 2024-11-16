@@ -115,10 +115,26 @@ export const AppProvider = ({children}) => {
     window.location.reload();
   };
 
-  // Safely check for window.ethereum
+  // Safely check for window.ethereum and prioritize MetaMask
   const getEthereum = () => {
     if (typeof window !== 'undefined') {
-      return window.ethereum;
+      // Check for multiple providers (like MetaMask, Rabby, etc.)
+      if (window.ethereum?.providers) {
+        // Try to find MetaMask first
+        const metaMaskProvider = window.ethereum.providers.find(provider => provider.isMetaMask);
+        if (metaMaskProvider) {
+          return metaMaskProvider;
+        }
+        // If no MetaMask, return the first available provider
+        return window.ethereum.providers[0];
+      }
+      
+      // Single provider case
+      if (window.ethereum) {
+        return window.ethereum;
+      }
+      
+      return null;
     }
     return null;
   };
@@ -131,15 +147,21 @@ export const AppProvider = ({children}) => {
       const ethereum = getEthereum();
       
       if (!ethereum) {
-        setConnectionError('Please install MetaMask');
-        alert("Please install MetaMask to use this application");
+        setConnectionError('Please install a Web3 wallet');
+        alert("Please install MetaMask or another Web3 wallet to use this application");
         window.open("https://metamask.io/download/", "_blank");
         return;
       }
 
       try {
-        // Connect with ThirdWeb first
-        await connectWithMetamask();
+        // If it's MetaMask, use it directly
+        if (ethereum.isMetaMask) {
+          await connectWithMetamask();
+        } else {
+          // For other wallets, try to connect using the standard method
+          await ethereum.request({ method: 'eth_requestAccounts' });
+          await connectWithMetamask(); // ThirdWeb will handle the connection
+        }
 
         // Check network after successful connection
         const chainId = await ethereum.request({ 
@@ -153,6 +175,7 @@ export const AppProvider = ({children}) => {
               params: [{ chainId: '0x66eee' }],
             });
           } catch (switchError) {
+            // Handle network switch or add
             if (switchError.code === 4902) {
               await ethereum.request({
                 method: 'wallet_addEthereumChain',
@@ -180,7 +203,6 @@ export const AppProvider = ({children}) => {
         });
         
         if (accounts.length > 0) {
-          // Connection successful, no need for additional actions
           return true;
         }
 
