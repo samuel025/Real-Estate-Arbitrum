@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
 import { 
     useAddress,
@@ -118,19 +118,32 @@ export const AppProvider = ({children}) => {
   // Safely check for window.ethereum and prioritize MetaMask
   const getEthereum = () => {
     if (typeof window !== 'undefined') {
-      // Check for multiple providers (like MetaMask, Rabby, etc.)
+      // Check if we're on HTTPS
+      const isHttps = window.location.protocol === 'https:';
+      
+      // Check for multiple providers
       if (window.ethereum?.providers) {
-        // Try to find MetaMask first
         const metaMaskProvider = window.ethereum.providers.find(provider => provider.isMetaMask);
         if (metaMaskProvider) {
+          // Ensure provider is ready for HTTPS
+          if (isHttps) {
+            metaMaskProvider.enable = metaMaskProvider.request.bind(metaMaskProvider, {
+              method: 'eth_requestAccounts'
+            });
+          }
           return metaMaskProvider;
         }
-        // If no MetaMask, return the first available provider
         return window.ethereum.providers[0];
       }
       
       // Single provider case
       if (window.ethereum) {
+        // Ensure provider is ready for HTTPS
+        if (isHttps) {
+          window.ethereum.enable = window.ethereum.request.bind(window.ethereum, {
+            method: 'eth_requestAccounts'
+          });
+        }
         return window.ethereum;
       }
       
@@ -154,13 +167,23 @@ export const AppProvider = ({children}) => {
       }
 
       try {
-        // If it's MetaMask, use it directly
+        // Ensure we're handling the connection securely
         if (ethereum.isMetaMask) {
+          try {
+            // First try the modern way
+            await ethereum.request({ method: 'eth_requestAccounts' });
+          } catch (requestError) {
+            // Fallback to legacy method if needed
+            if (ethereum.enable) {
+              await ethereum.enable();
+            } else {
+              throw requestError;
+            }
+          }
           await connectWithMetamask();
         } else {
-          // For other wallets, try to connect using the standard method
           await ethereum.request({ method: 'eth_requestAccounts' });
-          await connectWithMetamask(); // ThirdWeb will handle the connection
+          await connectWithMetamask();
         }
 
         // Check network after successful connection
@@ -275,19 +298,10 @@ export const AppProvider = ({children}) => {
 
   // -------------------------------------
 
-  const getPropertiesFunction = async () => {
+  const { data: properties } = useContractRead(contract, "getAllProperties");
+
+  const getPropertiesFunction = useCallback(async () => {
     try {
-      // Use useContractRead for reading data
-      const { data: properties, isLoading, error } = useContractRead(
-        contract,
-        "getAllProperties"
-      );
-
-      if (error) {
-        console.error("Error reading properties:", error);
-        return [];
-      }
-
       if (!properties || properties.length === 0) {
         return [];
       }
@@ -311,7 +325,7 @@ export const AppProvider = ({children}) => {
       console.error("Error in getPropertiesFunction:", error);
       return [];
     }
-  };
+  }, [properties]);
 
   // -------------------------------------
 
@@ -664,8 +678,9 @@ const removeLiquidityFunction = async (amount) => {
 
   //--------------------------------------------------------
 
-  const getSinglePropertyFunction = async (propertyId) => {
+  const getSinglePropertyFunction = useCallback(async (propertyId) => {
     try {
+        if (!contract) return null;
         const property = await contract.call('getProperty', [propertyId]);
 
         const parsedProperty = [{
@@ -690,7 +705,7 @@ const removeLiquidityFunction = async (amount) => {
         console.error("Error getting single property:", err);
         return null;
     }
-  }
+  }, [contract]);
 
   //--------------------------------------------------------
 
