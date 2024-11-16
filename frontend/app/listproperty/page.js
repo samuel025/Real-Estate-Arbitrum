@@ -1,18 +1,21 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../../context';
 import { useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
 import styles from './ListProperty.module.css';
 import Navbar from '../../components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { uploadToPinata } from '../../utils/pinataUtils';
 
 export default function ListProperty() {
     const { address, listPropertyFunction, connect } = useAppContext();
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -20,7 +23,6 @@ export default function ListProperty() {
         totalShares: '',
         rent: '',
         rentPeriod: '30',
-        images: '',
         description: '',
         propertyAddress: ''
     });
@@ -33,6 +35,18 @@ export default function ListProperty() {
         }));
     };
 
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                setError('File size should be less than 10MB');
+                return;
+            }
+            setSelectedImage(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -43,14 +57,22 @@ export default function ListProperty() {
                 throw new Error("Please connect your wallet first");
             }
 
+            // Upload image to Pinata
+            let ipfsUrl = '';
+            if (selectedImage) {
+                ipfsUrl = await uploadToPinata(selectedImage);
+                if (!ipfsUrl) {
+                    throw new Error("Failed to upload image");
+                }
+            }
+
             const priceInWei = ethers.utils.parseEther(formData.price.toString());
             const rentInWei = ethers.utils.parseEther(formData.rent.toString());
             const totalSharesBN = ethers.BigNumber.from(formData.totalShares.toString());
             const rentPeriodBN = ethers.BigNumber.from(formData.rentPeriod.toString());
 
             if (!formData.name || !formData.price || !formData.totalShares || 
-                !formData.rent || !formData.images || !formData.description || 
-                !formData.propertyAddress) {
+                !formData.rent || !formData.description || !formData.propertyAddress) {
                 throw new Error("All fields are required");
             }
 
@@ -66,7 +88,7 @@ export default function ListProperty() {
                 totalSharesBN,
                 rentInWei,
                 rentPeriodBN,
-                formData.images,
+                ipfsUrl, // IPFS URL from Pinata
                 formData.description,
                 formData.propertyAddress
             );
@@ -181,16 +203,24 @@ export default function ListProperty() {
                     </div>
 
                     <div className={styles.formGroup}>
-                        <label htmlFor="images">Image URL</label>
+                        <label htmlFor="propertyImage">Property Image</label>
                         <input
-                            type="url"
-                            id="images"
-                            name="images"
-                            value={formData.images}
-                            onChange={handleChange}
-                            placeholder="Enter image URL"
+                            type="file"
+                            id="propertyImage"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className={styles.fileInput}
                             required
                         />
+                        {imagePreview && (
+                            <div className={styles.imagePreview}>
+                                <img 
+                                    src={imagePreview} 
+                                    alt="Property Preview" 
+                                    className={styles.previewImage}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className={styles.formGroup}>
@@ -223,12 +253,14 @@ export default function ListProperty() {
                         className={styles.submitButton}
                         disabled={isLoading}
                     >
-                        {isLoading ?  <>
-                                            <Navbar />
-                                            <div className={styles.loadingContainer}>
-                                            <LoadingSpinner />
-                                            </div>
-                                      </> : 'List Property'}
+                        {isLoading ? (
+                            <div className={styles.loadingContainer}>
+                                <LoadingSpinner />
+                                <span>Uploading...</span>
+                            </div>
+                        ) : (
+                            'List Property'
+                        )}
                     </button>
                 </form>
             </div>

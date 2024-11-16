@@ -392,49 +392,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     }
 };
 
-// --------------------------------------------
-
-const {mutateAsync: addLiquidity} = useContractWrite(contract, "addLiquidity");
-const addLiquidityFunction = async (amount) => {
-  try {
-    const data = await addLiquidity({
-      overrides: {
-        value: ethers.utils.parseEther(amount) 
-      }
-    });
-    console.info("contract call success", data);
-  } catch (error) {
-    console.error("contract call failure", error);
-    throw Error
-  }
-}
-
-// --------------------------------------------
-
-const {mutateAsync: removeLiquidity} = useContractWrite(contract, "removeLiquidity");
-const removeLiquidityFunction = async (amount) => {
-  try {
-    const data = await removeLiquidity({
-      args: [ethers.utils.parseEther(amount)]
-    });
-    console.info("contract call success", data);
-  } catch (error) {
-    console.error("contract call failure", error);
-  }
-}
-
-// -------------------------------------------
-
-  const getLiquidityBalanceFunction = async (providerAddress) => {
-    try {
-      const balance = await contract.call('getLiquidityBalance',[providerAddress]);
-      return ethers.utils.formatEther(balance.toString()); 
-    } catch (error) {
-      console.error("contract call failure", error);
-      throw error
-    }
-  }
-
   //--------------------------------------------------------
 
   const {mutateAsync: payRent} = useContractWrite(contract, "payRent")
@@ -1054,9 +1011,6 @@ const removeLiquidityFunction = async (amount) => {
     getPropertiesFunction,
     updatePropertyFunction,
     buySharesFunction,
-    addLiquidityFunction,
-    removeLiquidityFunction,
-    getLiquidityBalanceFunction,
     payRentFunction,
     claimRentFunction,
     submitReviewFunction,
