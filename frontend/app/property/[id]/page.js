@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAppContext } from '../../../context';
-import { useParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { ethers } from 'ethers';
 import styles from './PropertyDetails.module.css';
 import Navbar from '@/components/Navbar';
@@ -83,11 +83,12 @@ const formatAccruedRent = (value) => {
 };
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dataFetched, setDataFetched] = useState(false);
+  const router = useRouter();
   const params = useParams();
   const [sharesToBuy, setSharesToBuy] = useState(1);
   const [totalCost, setTotalCost] = useState('0');
@@ -137,6 +138,7 @@ export default function PropertyDetails() {
   const [listingSuccess, setListingSuccess] = useState('');
   const [totalUserShares, setTotalUserShares] = useState(0);
   const [isContractReady, setIsContractReady] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -447,7 +449,12 @@ export default function PropertyDetails() {
   };
 
   // Check if the user has shares
-  const userShares = shareholdersInfo[0]?.shares ? parseInt(shareholdersInfo[0].shares) : 0;
+  const userShares = useMemo(() => {
+    if (!shareholdersInfo || !Array.isArray(shareholdersInfo) || shareholdersInfo.length === 0) {
+      return 0;
+    }
+    return shareholdersInfo[0]?.shares ? parseInt(shareholdersInfo[0].shares) : 0;
+  }, [shareholdersInfo]);
 
   // Add a function to display the total required amount
   const getTotalRequiredAmount = async () => {
@@ -685,6 +692,36 @@ export default function PropertyDetails() {
     }
   }, [contract]);
 
+  const handleRemoveProperty = async () => {
+    if (!address || property.owner !== address) return;
+    
+    // Confirm with user
+    if (!window.confirm('Are you sure you want to remove this property? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsRemoving(true);
+    try {
+      await removePropertyFunction({
+        propertyId: params.id
+      });
+
+      // Wait for transaction to be processed
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Clear states before navigation
+      setShareholdersInfo([]);
+      setProperty(null);
+      
+      // Use replace instead of push to prevent back navigation to removed property
+      router.replace('/');
+      
+    } catch (error) {
+      console.error("Failed to remove property:", error);
+      setIsRemoving(false);
+    }
+  };
+
   if (isLoading || !dataFetched) {
     return (
       <>
@@ -708,14 +745,8 @@ export default function PropertyDetails() {
   }
 
   if (!property && dataFetched) {
-    return (
-      <>
-        <Navbar />
-        <div className={styles.container}>
-          <div className={styles.error}>Property not found</div>
-        </div>
-      </>
-    );
+    router.replace('/');
+    return null;
   }
 
   if (!address) {
@@ -755,13 +786,31 @@ export default function PropertyDetails() {
                 <div className={styles.ownerActions}>
                   <button 
                     onClick={handlePayRent}
-                    className={styles.payRentButton}
+                    className={styles.actionButton}
                     disabled={!rentStatus.isRentDue}
                     title={!rentStatus.isRentDue 
                         ? `Rent is not due yet` 
                         : `Click to pay rent (${rentStatus.totalRequired} ETH)`}
                   >
                     Pay Rent ({rentStatus.totalRequired} ETH)
+                  </button>
+                  
+                  <Link 
+                    href={`/update/${property.propertyId}`}
+                    className={styles.actionButton}
+                  >
+                    Update Property
+                  </Link>
+
+                  <button 
+                    onClick={handleRemoveProperty}
+                    className={`${styles.actionButton} ${styles.removeButton}`}
+                    disabled={isRemoving || rentPeriodStatus?.isActive}
+                    title={rentPeriodStatus?.isActive 
+                      ? 'Cannot remove property during active rent period' 
+                      : 'Remove this property listing'}
+                  >
+                    {isRemoving ? 'Removing...' : 'Remove Property'}
                   </button>
                 </div>
               )}
@@ -926,15 +975,19 @@ export default function PropertyDetails() {
                           <span>{property.AvailableShares}</span>
                         </div>
                       )}
-                      <div className={styles.detailItem}>
-                        <span className={styles.label}>Listed Shares:</span>
-                        <span>{totalListedShares}</span>
-                      </div>
-                      {shareholdersInfo?.[0] && (
-                        <div className={styles.detailItem}>
-                          <span className={styles.label}>Your Shares:</span>
-                          <span>{shareholdersInfo[0].shares.toString()}</span>
-                        </div>
+                      {property?.owner !== address && (
+                        <>
+                          <div className={styles.detailItem}>
+                            <span className={styles.label}>Listed Shares:</span>
+                          <span>{totalListedShares}</span>
+                          </div>
+                          {shareholdersInfo?.[0] && (
+                          <div className={styles.detailItem}>
+                            <span className={styles.label}>Your Shares:</span>
+                            <span>{shareholdersInfo[0].shares.toString()}</span>
+                          </div>
+                        )}
+                        </>
                       )}
                     </div>
 

@@ -29,7 +29,7 @@ export const AppProvider = ({children}) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
-  const {contract} = useContract("0x15728BD58b3646f8cb7D062A46F0405eFf0Cc5AD")
+  const {contract} = useContract("0x1aE3b2e07564a05A7C98D232aF9D8474C83bD062")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
 
   const address = useAddress();
@@ -1020,6 +1020,27 @@ const removeLiquidityFunction = async (amount) => {
     }
   }
 
+
+  const propertyMessageFunction = async (propertyId, message) => {
+    try {
+        const data = await contract.call('postPropertyMessage', [propertyId, message]);
+        return data;
+    } catch (error) {
+        console.error("Error posting property message:", error);
+        throw error;
+    }
+  };
+
+  const deletePropertyMessageFunction = async (propertyId) => {
+    try {
+        const data = await contract.call('deletePropertyMessage', [propertyId]);
+        return data;
+    } catch (error) {
+        console.error("Error deleting property message:", error);
+        throw error;
+    }
+  };
+
   const value = {
     contract,
     address,
@@ -1054,6 +1075,7 @@ const removeLiquidityFunction = async (amount) => {
     getActiveListingsFunction,
     getPropertyListingsFunction,
     getListingsByPriceRangeFunction,
+    propertyMessageFunction,
     getUserListingsFunction,
     getPropertyFunction,
     isPeriodClaimedFunction,
@@ -1063,6 +1085,7 @@ const removeLiquidityFunction = async (amount) => {
     getLateFeeDistributionFunction,
     getAccruedRentFunction,
     getRentPeriodInfo,
+    deletePropertyMessageFunction,
   };
 
   return (

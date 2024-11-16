@@ -17,6 +17,7 @@ export default function Marketplace() {
     const [sharesToBuy, setSharesToBuy] = useState({});
     const [buyErrors, setBuyErrors] = useState({});
     const [successMessage, setSuccessMessage] = useState('');
+    const [isBuyingBack, setIsBuyingBack] = useState({});
 
     const { 
         getActiveListingsFunction, 
@@ -124,7 +125,7 @@ export default function Marketplace() {
                 throw new Error("Listing not found");
             }
 
-            // Check if buyer is the seller (add this check first)
+            // Check if buyer is the seller
             if (listing.seller.toLowerCase() === address.toLowerCase()) {
                 setBuyErrors(prev => ({
                     ...prev,
@@ -139,21 +140,10 @@ export default function Marketplace() {
                 throw new Error("Property details not found");
             }
 
-            // Check if buyer is the original property owner
-            if (propertyDetails[0].owner.toLowerCase() === address.toLowerCase()) {
-                setBuyErrors(prev => ({
-                    ...prev,
-                    [listingId]: "Property owners cannot buy shares of their own property"
-                }));
-                return;
-            }
+            // Check if buyer is the property owner - but now we allow it
+            const isOwner = propertyDetails[0].owner.toLowerCase() === address.toLowerCase();
 
             await debugListing(listingId);
-            
-            if (!address) {
-                setError("Please connect your wallet first");
-                return;
-            }
 
             const listingIdNumber = Number(listingId);
             if (isNaN(listingIdNumber)) {
@@ -185,12 +175,10 @@ export default function Marketplace() {
             const totalCostWei = ethers.BigNumber.from(pricePerShare)
                 .mul(ethers.BigNumber.from(sharesToBuyAmount));
 
-            console.log("Buy shares parameters:", {
-                listingId: listingIdNumber,
-                sharesToBuy: sharesToBuyAmount,
-                totalCostWei: totalCostWei.toString(),
-                maxShares
-            });
+            setIsBuyingBack(prev => ({
+                ...prev,
+                [listingId]: isOwner
+            }));
 
             await buyListedSharesFunction(
                 listingIdNumber,
@@ -200,7 +188,7 @@ export default function Marketplace() {
                 }
             );
 
-            // Clear the input and error after successful purchase
+            // Clear states after successful purchase
             setSharesToBuy(prev => ({
                 ...prev,
                 [listingId]: ''
@@ -209,6 +197,10 @@ export default function Marketplace() {
                 ...prev,
                 [listingId]: ''
             }));
+            setIsBuyingBack(prev => ({
+                ...prev,
+                [listingId]: false
+            }));
 
             await fetchListings();
         } catch (err) {
@@ -216,6 +208,10 @@ export default function Marketplace() {
             setBuyErrors(prev => ({
                 ...prev,
                 [listingId]: err.message || 'Transaction failed. Please try again.'
+            }));
+            setIsBuyingBack(prev => ({
+                ...prev,
+                [listingId]: false
             }));
         }
     };
@@ -424,10 +420,6 @@ export default function Marketplace() {
                                                     Cancel Listing
                                                 </button>
                                             </div>
-                                        ) : listing.property && listing.property.owner.toLowerCase() === address.toLowerCase() ? (
-                                            <div className={styles.ownerNotice}>
-                                                You cannot buy shares as the property owner
-                                            </div>
                                         ) : (
                                             <>
                                                 <div className={styles.shareInput}>
@@ -476,7 +468,7 @@ export default function Marketplace() {
                                                         : '0'} ETH
                                                 </div>
                                                 <button
-                                                    className={styles.buyButton}
+                                                    className={`${styles.buyButton} ${listing.property?.owner.toLowerCase() === address.toLowerCase() ? styles.buybackButton : ''}`}
                                                     onClick={() => handleBuyShares(
                                                         listing.listingId,
                                                         listing.numberOfShares,
@@ -484,7 +476,9 @@ export default function Marketplace() {
                                                     )}
                                                     disabled={!listing.isActive || !sharesToBuy[listing.listingId]}
                                                 >
-                                                    Buy Shares
+                                                    {listing.property?.owner.toLowerCase() === address.toLowerCase() 
+                                                        ? (isBuyingBack[listing.listingId] ? 'Buying Back...' : 'Buy Back Shares')
+                                                        : (isBuyingBack[listing.listingId] ? 'Buying...' : 'Buy Shares')}
                                                 </button>
                                             </>
                                         )}

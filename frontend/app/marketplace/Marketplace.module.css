@@ -300,4 +300,12 @@
     border-radius: 4px;
     margin: 1rem 0;
     text-align: center;
+}
+
+.buybackButton {
+    background-color: #2c5282 !important;
+}
+
+.buybackButton:hover:not(:disabled) {
+    background-color: #2a4365 !important;
 } 

@@ -23,6 +23,7 @@ contract RealEstateTokenization {
     error InvalidPrice();
     error NotSeller();
     error SameAddress();
+    error NotAuthorized();
     error ActiveRentPeriod();
     error SharesStillOwned();
 
@@ -115,6 +116,28 @@ contract RealEstateTokenization {
     event RentDefaulted(uint256 indexed propertyId, uint256 missedAmount, uint256 timestamp);
     event RentDebtPaid(uint256 indexed propertyId, uint256 amount, uint256 timestamp);
     event PropertyDefaultStatusUpdated(uint256 indexed propertyId, bool isDefaulted);
+    // Add these events at the contract level with the other events
+    event PropertyUpdated(
+        uint256 indexed propertyId,
+        string name,
+        uint256 price,
+        uint256 rent,
+        uint256 rentPeriod,
+        string images,
+        string description,
+        string propertyAddress,
+        bool isInRentPeriod
+    );
+
+    event PropertyFinancialsUpdated(
+        uint256 indexed propertyId,
+        uint256 oldPrice,
+        uint256 newPrice,
+        uint256 oldRent,
+        uint256 newRent,
+        uint256 oldRentPeriod,
+        uint256 newRentPeriod
+    );
 
     // Add these state variables
     struct RentStatus {
@@ -133,6 +156,38 @@ contract RealEstateTokenization {
 
     // Add a mapping to track rent claimed per period
     mapping(uint256 => mapping(address => mapping(uint256 => uint256))) public periodRentClaimed;
+
+    // Add these at the contract level with other state variables
+    struct PropertyMessage {
+        string message;
+        uint256 timestamp;
+        address sender;
+        bool isActive;
+    }
+
+    mapping(uint256 => PropertyMessage) public propertyMessages;
+
+    // Add these events with other events
+    event PropertyMessagePosted(
+        uint256 indexed propertyId,
+        string message,
+        address indexed sender,
+        uint256 timestamp
+    );
+
+    event PropertyMessageUpdated(
+        uint256 indexed propertyId,
+        string oldMessage,
+        string newMessage,
+        address indexed sender,
+        uint256 timestamp
+    );
+
+    event PropertyMessageDeleted(
+        uint256 indexed propertyId,
+        address indexed sender,
+        uint256 timestamp
+    );
 
     constructor() {
         contractOwner = msg.sender;
@@ -262,39 +317,93 @@ contract RealEstateTokenization {
         emit PropertyListed(propertyId, _owner, _name, _price, _totalShares);
     }
 
-    function updateProperty(
-        uint256 _propertyId,
-        string memory _name,
-        uint256 _price,
-        uint256 _rent,
-        uint256 _rentPeriod,
-        string memory _images,
-        string memory _description,
-        string memory _propertyAddress
+
+
+
+function updateProperty(
+    uint256 _propertyId,
+    string memory _name,
+    uint256 _price,
+    uint256 _rent,
+    uint256 _rentPeriod,
+    string memory _images,
+    string memory _description,
+    string memory _propertyAddress
     ) external propertyExists(_propertyId) {
         Property storage property = properties[_propertyId];
         
         // Only owner can update
-        require(property.owner == msg.sender, "Not owner");
+        if (msg.sender != property.owner && msg.sender != contractOwner) {
+            revert NotAuthorized();
+        }
         
-        // Validate inputs
-        if (_price == 0 || _rent == 0 || _rentPeriod == 0) 
-            revert InvalidAmount();
+        // Check if in active rent period
+        bool isInRentPeriod = block.timestamp >= property.currentRentPeriodStart && 
+                            block.timestamp <= property.currentRentPeriodEnd;
+        
+        if (isInRentPeriod) {
+            // During rent period, can only update non-financial details
+            property.name = _name;
+            property.description = _description;
+            property.propertyAddress = _propertyAddress;
+            property.images = _images;
+            
+            emit PropertyUpdated(
+                _propertyId,
+                _name,
+                property.price, // Keep existing values for financial parameters
+                property.rent,
+                property.rentPeriod,
+                _images,
+                _description,
+                _propertyAddress,
+                true // isInRentPeriod
+            );
+        } else {
+            // Between rent periods, can update all fields
+            if (_price == 0 || _rent == 0 || _rentPeriod == 0) {
+                revert InvalidAmount();
+            }
 
-        // Keep the existing id when updating other fields
-        uint256 existingId = property.id;
-        
-        // Update fields
-        property.name = _name;
-        property.price = _price;
-        property.rent = _rent;
-        property.rentPeriod = _rentPeriod;
-        property.images = _images;
-        property.description = _description;
-        property.propertyAddress = _propertyAddress;
-        
-        // Ensure ID remains unchanged
-        property.id = existingId;
+            // Store old values for event emission
+            uint256 oldPrice = property.price;
+            uint256 oldRent = property.rent;
+            uint256 oldRentPeriod = property.rentPeriod;
+
+            // Update all fields
+            property.name = _name;
+            property.price = _price;
+            property.rent = _rent;
+            property.rentPeriod = _rentPeriod;
+            property.images = _images;
+            property.description = _description;
+            property.propertyAddress = _propertyAddress;
+            
+            emit PropertyUpdated(
+                _propertyId,
+                _name,
+                _price,
+                _rent,
+                _rentPeriod,
+                _images,
+                _description,
+                _propertyAddress,
+                false // isInRentPeriod
+            );
+
+            // Emit event for financial changes
+            if (oldPrice != _price || oldRent != _rent || oldRentPeriod != _rentPeriod) {
+                emit PropertyFinancialsUpdated(
+                    _propertyId,
+                    oldPrice,
+                    _price,
+                    oldRent,
+                    _rent,
+                    oldRentPeriod,
+                    _rentPeriod
+                );
+            }
+        }
     }
 
     /**
@@ -535,7 +644,8 @@ contract RealEstateTokenization {
         address _owner
     ) external propertyExists(_propertyId) {
         Property storage property = properties[_propertyId];
-        require(property.owner == _owner, "Not owner");
+        // Allow both property owner and contract owner to remove properties
+        require(property.owner == _owner || msg.sender == contractOwner, "Not authorized");
         
         // 1. Ensure we're between rent periods (not in active period)
         if (block.timestamp <= property.currentRentPeriodEnd) {
@@ -933,15 +1043,25 @@ contract RealEstateTokenization {
         }
 
         // 5. Update share ownership
-        Shareholder storage buyer = shareholders[listing.propertyId][msg.sender];
+        // Check if buyer is the property owner
+        bool isBuyerPropertyOwner = msg.sender == property.owner;
         
-        // Initialize buyer's claim timestamp if first time buying shares
-        if (buyer.sharesOwned == 0) {
-            buyer.lastClaimTimestamp = block.timestamp;
+        if (isBuyerPropertyOwner) {
+            // If buyer is property owner, add shares back to property's available shares
+            property.availableShares += _sharesToBuy;
+        } else {
+            // Normal case: add shares to buyer's balance
+            Shareholder storage buyer = shareholders[listing.propertyId][msg.sender];
+            
+            // Initialize buyer's claim timestamp if first time buying shares
+            if (buyer.sharesOwned == 0) {
+                buyer.lastClaimTimestamp = block.timestamp;
+            }
+            
+            buyer.sharesOwned += _sharesToBuy;
         }
-        
-        // Update shares
-        buyer.sharesOwned += _sharesToBuy;
+
+        // Update listing
         listing.numberOfShares -= _sharesToBuy;
 
         // 6. Transfer payment to seller
@@ -953,7 +1073,7 @@ contract RealEstateTokenization {
             listing.isActive = false;
         }
 
-        // 8. Emit event
+        // 8. Emit event with additional parameter for buyback
         emit MarketplaceSharesSold(
             listing.propertyId,
             _listingId,
@@ -1432,6 +1552,114 @@ contract RealEstateTokenization {
             listing.seller,
             listing.numberOfShares,
             listing.pricePerShare
+        );
+    }
+
+    /**
+     * @dev Post or update a message for a specific property
+     * @param _propertyId The ID of the property
+     * @param _message The message to be posted
+     */
+    function postPropertyMessage(
+        uint256 _propertyId,
+        string memory _message
+    ) external propertyExists(_propertyId) {
+        Property storage property = properties[_propertyId];
+        
+        // Only property owner or contract owner can post messages
+        if (msg.sender != property.owner && msg.sender != contractOwner) {
+            revert NotAuthorized();
+        }
+
+        PropertyMessage storage currentMessage = propertyMessages[_propertyId];
+        
+        // If there's an existing active message, update it
+        if (currentMessage.isActive) {
+            string memory oldMessage = currentMessage.message;
+            currentMessage.message = _message;
+            currentMessage.timestamp = block.timestamp;
+            currentMessage.sender = msg.sender;
+            
+            emit PropertyMessageUpdated(
+                _propertyId,
+                oldMessage,
+                _message,
+                msg.sender,
+                block.timestamp
+            );
+        } else {
+            // Create new message
+            propertyMessages[_propertyId] = PropertyMessage({
+                message: _message,
+                timestamp: block.timestamp,
+                sender: msg.sender,
+                isActive: true
+            });
+            
+            emit PropertyMessagePosted(
+                _propertyId,
+                _message,
+                msg.sender,
+                block.timestamp
+            );
+        }
+    }
+
+    /**
+     * @dev Delete the current message for a property
+     * @param _propertyId The ID of the property
+     */
+    function deletePropertyMessage(
+        uint256 _propertyId
+    ) external propertyExists(_propertyId) {
+        Property storage property = properties[_propertyId];
+        PropertyMessage storage message = propertyMessages[_propertyId];
+        
+        // Only message sender, property owner, or contract owner can delete
+        if (msg.sender != message.sender && 
+            msg.sender != property.owner && 
+            msg.sender != contractOwner) {
+            revert NotAuthorized();
+        }
+
+        if (!message.isActive) {
+            revert("No active message");
+        }
+
+        message.isActive = false;
+        
+        emit PropertyMessageDeleted(
+            _propertyId,
+            msg.sender,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @dev Get the current message for a property
+     * @param _propertyId The ID of the property
+     * @return message The message content
+     * @return timestamp When the message was posted/updated
+     * @return sender Who posted the message
+     * @return isActive Whether the message is active
+     */
+    function getPropertyMessage(uint256 _propertyId) 
+        external 
+        view 
+        propertyExists(_propertyId) 
+        returns (
+            string memory message,
+            uint256 timestamp,
+            address sender,
+            bool isActive
+        ) 
+    {
+        PropertyMessage storage propertyMessage = propertyMessages[_propertyId];
+        return (
+            propertyMessage.message,
+            propertyMessage.timestamp,
+            propertyMessage.sender,
+            propertyMessage.isActive
         );
     }
 }
