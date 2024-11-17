@@ -5,12 +5,12 @@ import styles from './Marketplace.module.css';
 import { ethers } from 'ethers';
 import Navbar from '@/components/Navbar';
 import Image from 'next/image';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function Marketplace() {
     const [listings, setListings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [propertyDetails, setPropertyDetails] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [priceFilter, setPriceFilter] = useState('all');
     const [sortOrder, setSortOrder] = useState('newest');
@@ -18,6 +18,7 @@ export default function Marketplace() {
     const [buyErrors, setBuyErrors] = useState({});
     const [successMessage, setSuccessMessage] = useState('');
     const [isBuyingBack, setIsBuyingBack] = useState({});
+    const [isCancelling, setIsCancelling] = useState({});
 
     const { 
         getActiveListingsFunction, 
@@ -34,17 +35,13 @@ export default function Marketplace() {
             setError(null);
             
             if (!contract) {
-                console.log("Waiting for contract initialization...");
                 return;
             }
 
             // Get listings
-            console.log("Calling getActiveListingsFunction...");
             const activeListings = await getActiveListingsFunction();
-            console.log("Active listings:", activeListings);
 
             if (!activeListings || activeListings.length === 0) {
-                console.log("No active listings found");
                 setListings([]);
                 return;
             }
@@ -53,11 +50,8 @@ export default function Marketplace() {
             const listingsWithDetails = await Promise.all(
                 activeListings.map(async (listing) => {
                     try {
-                        console.log("Getting property details for ID:", listing.propertyId);
                         const propertyDetails = await getPropertyFunction(listing.propertyId);
-                        
                         if (!propertyDetails) {
-                            console.log("No property details found for ID:", listing.propertyId);
                             return null;
                         }
 
@@ -74,8 +68,6 @@ export default function Marketplace() {
 
             // Filter out null values
             const validListings = listingsWithDetails.filter(listing => listing !== null);
-            console.log("Final listings with details:", validListings);
-
             setListings(validListings);
         } catch (err) {
             console.error("Error fetching listings:", err);
@@ -93,29 +85,15 @@ export default function Marketplace() {
     }, [contract]);
 
     useEffect(() => {
-        console.log("Listings state updated:", listings);
     }, [listings]);
-
-    const debugListing = async (listingId) => {
-        try {
-            const details = await contract.call('getListingDetails', [listingId]);
-            console.log('Listing details:', {
-                exists: details.exists,
-                isActive: details.isActive,
-                propertyId: details.propertyId.toString(),
-                seller: details.seller,
-                numberOfShares: details.numberOfShares.toString(),
-                pricePerShare: details.pricePerShare.toString()
-            });
-        } catch (err) {
-            console.error('Error getting listing details:', err);
-        }
-    };
 
     const handleBuyShares = async (listingId, maxShares, pricePerShare) => {
         try {
             if (!address) {
-                setError("Please connect your wallet first");
+                setBuyErrors(prev => ({
+                    ...prev,
+                    [listingId]: "Please connect your wallet first"
+                }));
                 return;
             }
 
@@ -134,26 +112,6 @@ export default function Marketplace() {
                 return;
             }
 
-            // Get property details to check owner
-            const propertyDetails = await getPropertyFunction(listing.propertyId);
-            if (!propertyDetails) {
-                throw new Error("Property details not found");
-            }
-
-            // Check if buyer is the property owner - but now we allow it
-            const isOwner = propertyDetails[0].owner.toLowerCase() === address.toLowerCase();
-
-            await debugListing(listingId);
-
-            const listingIdNumber = Number(listingId);
-            if (isNaN(listingIdNumber)) {
-                setBuyErrors(prev => ({
-                    ...prev,
-                    [listingId]: "Invalid listing ID"
-                }));
-                return;
-            }
-
             const sharesToBuyAmount = sharesToBuy[listingId];
             if (!sharesToBuyAmount || sharesToBuyAmount <= 0) {
                 setBuyErrors(prev => ({
@@ -163,62 +121,67 @@ export default function Marketplace() {
                 return;
             }
 
-            if (sharesToBuyAmount > maxShares) {
+            // Calculate total cost
+            const totalCostWei = ethers.BigNumber.from(pricePerShare)
+                .mul(ethers.BigNumber.from(sharesToBuyAmount));
+
+            // Check user's balance
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const balance = await provider.getBalance(address);
+
+            if (balance.lt(totalCostWei)) {
                 setBuyErrors(prev => ({
                     ...prev,
-                    [listingId]: "Cannot buy more shares than available"
+                    [listingId]: "Insufficient funds in your wallet"
                 }));
                 return;
             }
 
-            // Calculate total cost in Wei
-            const totalCostWei = ethers.BigNumber.from(pricePerShare)
-                .mul(ethers.BigNumber.from(sharesToBuyAmount));
+            setIsBuyingBack(prev => ({ ...prev, [listingId]: true }));
 
-            setIsBuyingBack(prev => ({
-                ...prev,
-                [listingId]: isOwner
-            }));
-
+            // Attempt to buy shares
             await buyListedSharesFunction(
-                listingIdNumber,
+                listingId,
                 sharesToBuyAmount,
                 {
                     value: totalCostWei
                 }
             );
 
-            // Clear states after successful purchase
-            setSharesToBuy(prev => ({
-                ...prev,
-                [listingId]: ''
-            }));
-            setBuyErrors(prev => ({
-                ...prev,
-                [listingId]: ''
-            }));
-            setIsBuyingBack(prev => ({
-                ...prev,
-                [listingId]: false
-            }));
+            // Clear form and show success
+            setSharesToBuy(prev => ({ ...prev, [listingId]: '' }));
+            setBuyErrors(prev => ({ ...prev, [listingId]: '' }));
+            setSuccessMessage("Shares purchased successfully!");
 
+            // Refresh listings
             await fetchListings();
+
         } catch (err) {
-            console.error('Failed to buy shares:', err);
+            console.error("Error buying shares:", err);
+            let errorMessage = "Failed to buy shares";
+
+            if (err.message.includes("insufficient funds")) {
+                errorMessage = "Insufficient funds in your wallet";
+            } else if (err.code === 4001) {
+                errorMessage = "Transaction rejected by user";
+            } else if (err.message.includes("user rejected")) {
+                errorMessage = "Transaction cancelled";
+            }
+
             setBuyErrors(prev => ({
                 ...prev,
-                [listingId]: err.message || 'Transaction failed. Please try again.'
+                [listingId]: errorMessage
             }));
-            setIsBuyingBack(prev => ({
-                ...prev,
-                [listingId]: false
-            }));
+        } finally {
+            setIsBuyingBack(prev => ({ ...prev, [listingId]: false }));
         }
     };
 
     const handleCancelListing = async (listingId) => {
         try {
             setError(null);
+            // Set loading state for this specific listing
+            setIsCancelling(prev => ({ ...prev, [listingId]: true }));
             
             // Call the contract function
             await cancelListingFunction(listingId);
@@ -237,6 +200,9 @@ export default function Marketplace() {
         } catch (err) {
             console.error("Error cancelling listing:", err);
             setError("Failed to cancel listing. Please try again.");
+        } finally {
+            // Clear loading state
+            setIsCancelling(prev => ({ ...prev, [listingId]: false }));
         }
     };
 
@@ -280,6 +246,16 @@ export default function Marketplace() {
                 return getPrice(b) - getPrice(a);
             }
         });
+
+    // Add this function to format prices consistently
+    const formatPrice = (priceInWei) => {
+        try {
+            return Number(ethers.utils.formatEther(priceInWei)).toFixed(6);
+        } catch (error) {
+            console.error("Error formatting price:", error);
+            return "0";
+        }
+    };
 
     return (
         <>
@@ -334,9 +310,7 @@ export default function Marketplace() {
                 )}
 
                 <div className={styles.listingsGrid}>
-                    {filteredAndSortedListings.map((listing, index) => {
-                        console.log("Rendering listing:", listing);
-                        
+                    {filteredAndSortedListings.map((listing, index) => {                    
                         const numberOfShares = listing.numberOfShares.toString();
                         const priceInEth = ethers.utils.formatEther(listing.pricePerShare);
                         const totalPrice = (Number(numberOfShares) * Number(priceInEth)).toFixed(6);
@@ -416,8 +390,16 @@ export default function Marketplace() {
                                                 <button 
                                                     className={styles.cancelButton}
                                                     onClick={() => handleCancelListing(listing.listingId)}
+                                                    disabled={isCancelling[listing.listingId]}
                                                 >
-                                                    Cancel Listing
+                                                    {isCancelling[listing.listingId] ? (
+                                                        <div className={styles.loadingButton}>
+                                                            <LoadingSpinner />
+                                                            <span>Cancelling...</span>
+                                                        </div>
+                                                    ) : (
+                                                        'Cancel Listing'
+                                                    )}
                                                 </button>
                                             </div>
                                         ) : (
@@ -463,22 +445,38 @@ export default function Marketplace() {
                                                 </div>
                                                 <div className={styles.totalCost}>
                                                     Total Cost: {sharesToBuy[listing.listingId] 
-                                                        ? (Number(ethers.utils.formatEther(listing.pricePerShare)) * 
-                                                           Number(sharesToBuy[listing.listingId])).toFixed(6) 
+                                                        ? formatPrice(
+                                                            ethers.BigNumber.from(listing.pricePerShare)
+                                                                .mul(ethers.BigNumber.from(sharesToBuy[listing.listingId]))
+                                                          )
                                                         : '0'} ETH
                                                 </div>
                                                 <button
-                                                    className={`${styles.buyButton} ${listing.property?.owner.toLowerCase() === address.toLowerCase() ? styles.buybackButton : ''}`}
+                                                    className={`${styles.buyButton} ${
+                                                        listing.property?.owner.toLowerCase() === address.toLowerCase() 
+                                                            ? styles.buybackButton 
+                                                            : ''
+                                                    }`}
                                                     onClick={() => handleBuyShares(
                                                         listing.listingId,
                                                         listing.numberOfShares,
                                                         listing.pricePerShare
                                                     )}
-                                                    disabled={!listing.isActive || !sharesToBuy[listing.listingId]}
+                                                    disabled={
+                                                        !listing.isActive || 
+                                                        !sharesToBuy[listing.listingId] || 
+                                                        isBuyingBack[listing.listingId]
+                                                    }
                                                 >
-                                                    {listing.property?.owner.toLowerCase() === address.toLowerCase() 
-                                                        ? (isBuyingBack[listing.listingId] ? 'Buying Back...' : 'Buy Back Shares')
-                                                        : (isBuyingBack[listing.listingId] ? 'Buying...' : 'Buy Shares')}
+                                                    {isBuyingBack[listing.listingId] 
+                                                        ? <div className={styles.loadingButton}>
+                                                            <LoadingSpinner />
+                                                            <span>Processing...</span>
+                                                          </div>
+                                                        : listing.property?.owner.toLowerCase() === address.toLowerCase()
+                                                            ? 'Buy Back Shares'
+                                                            : 'Buy Shares'
+                                                    }
                                                 </button>
                                             </>
                                         )}

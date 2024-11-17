@@ -29,8 +29,9 @@ export const AppProvider = ({children}) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
-  const {contract} = useContract("0x1aE3b2e07564a05A7C98D232aF9D8474C83bD062")
+  const {contract} = useContract("0x5441FA1BeDe9AE0d359B068ebEa1f691A928C414")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
+  const { mutateAsync: buyShares } = useContractWrite(contract, "purchaseShares");
 
   const address = useAddress();
   const connectWithMetamask = useMetamask()
@@ -262,7 +263,6 @@ export const AppProvider = ({children}) => {
 
   // -------------------------------------
 
-  const {mutateAsync: listProperty} = useContractWrite(contract, "listProperty");
   const listPropertyFunction = async (
     owner,
     name,
@@ -345,32 +345,52 @@ export const AppProvider = ({children}) => {
 
   // --------------------------------------------
 
-const {mutateAsync: purchaseInitialShares} = useContractWrite(contract, "purchaseShares");
 const {mutateAsync: purchaseListedShares} = useContractWrite(contract, "buyListedShares");
 
 // Initial share purchase function
 const buySharesFunction = async (formData) => {
-  const {propertyId, shares, price} = formData;
-  try {
-    const data = await purchaseInitialShares({
-      args: [propertyId, shares, address],
-      overrides: {
-        value: ethers.utils.parseEther(price) 
-      }
-    });
-    console.info("Initial shares purchase successful", data);
-    return data;
-  } catch (error) {
-    console.error("Failed to purchase initial shares", error);
-    throw error;
-  }
-}
+    const { propertyId, shares, price } = formData;
+    try {
+        if (!contract || !address) {
+            throw new Error("Contract or wallet not connected");
+        }
+
+        const priceInWei = ethers.utils.parseEther(price.toString());
+
+        const data = await buyShares({
+            args: [propertyId, shares, address],
+            overrides: {
+                value: priceInWei
+            }
+        });
+
+        return data;
+
+    } catch (error) {
+        console.error("Error in buySharesFunction:", error);
+        
+        if (error.message.includes('Transaction reverted without a reason') ||
+            error.message.includes('missing revert data in call exception')) {
+            throw new Error('Transaction failed - please check your wallet balance and try again');
+        }
+        
+        throw error;
+    }
+};
 
 // Marketplace share purchase function
 const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     try {
         if (!overrides || !overrides.value) {
             throw new Error('Invalid transaction value');
+        }
+
+        // Check user's balance before proceeding
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const balance = await provider.getBalance(address);
+        
+        if (balance.lt(overrides.value)) {
+            throw new Error('INSUFFICIENT_FUNDS');
         }
 
         // Debug the listing before purchase
@@ -388,6 +408,15 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         return data;
     } catch (error) {
         console.error("Failed to purchase listed shares", error);
+        
+        // Handle specific error types
+        if (error.message === 'INSUFFICIENT_FUNDS') {
+            throw new Error('Insufficient funds in wallet');
+        } else if (error.code === 'INSUFFICIENT_FUNDS' || 
+                   error.message.includes('insufficient funds')) {
+            throw new Error('Insufficient funds in wallet');
+        }
+        
         throw error;
     }
 };
@@ -397,23 +426,65 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
   const {mutateAsync: payRent} = useContractWrite(contract, "payRent")
 
   const payRentFunction = async (formData) => {
-    const {propertyId, rent} = formData;
+    const { propertyId } = formData;
     try {
-      // Send only the base rent amount
-      const data = await payRent({
-        args: [propertyId, address],
-        overrides: {
-          value: ethers.BigNumber.from(rent) // Use only the base rent amount
+        if (!contract || !address) {
+            throw new Error("Contract or wallet not connected");
         }
-      });
-      
-      console.info("Rent payment successful:", data);
-      return data;
+
+        // Get all the required amounts
+        const property = await contract.call('getProperty', [propertyId]);
+        const lateFees = await contract.call('calculateLateFees', [propertyId]);
+        const rentStatus = await contract.call('getRentStatus', [propertyId]);
+        
+        // Calculate total required amount
+        const totalRequired = ethers.BigNumber.from(property.rent)
+            .add(lateFees)
+            .add(rentStatus.totalDebt || 0);
+
+        // Check user's balance before proceeding
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const balance = await provider.getBalance(address);
+
+        if (balance.lt(totalRequired)) {
+            throw new Error('INSUFFICIENT_FUNDS');
+        }
+
+        // Verify rent is actually due
+        const isRentDue = await contract.call('isRentDue', [propertyId]);
+        if (!isRentDue) {
+            throw new Error('RENT_NOT_DUE');
+        }
+
+        // Pass both propertyId and payer address to the contract
+        const data = await payRent({
+            args: [propertyId, address], // Add the payer's address here
+            overrides: {
+                value: totalRequired
+            }
+        });
+
+        console.info("Rent payment successful:", data);
+        return data;
+
     } catch (error) {
-      console.error("Error in payRentFunction:", error);
-      throw error;
+        console.error("Error in payRentFunction:", error);
+        
+        if (error.message === 'INSUFFICIENT_FUNDS' || 
+            error.code === 'INSUFFICIENT_FUNDS' ||
+            error.message.includes('insufficient funds')) {
+            throw new Error('Insufficient funds in wallet');
+        } else if (error.message === 'RENT_NOT_DUE') {
+            throw new Error('Rent is not due yet');
+        } else if (error.message.includes('user rejected')) {
+            throw new Error('Transaction cancelled by user');
+        } else if (error.message.includes('execution reverted')) {
+            throw new Error('Transaction failed - please check required amount');
+        }
+        
+        throw error;
     }
-  }
+  };
 
   //--------------------------------------------------------
   const {mutateAsync: claimRent} = useContractWrite(contract, "claimRent");
@@ -435,7 +506,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         });
 
         // Wait for transaction confirmation
-        await data.wait();
         console.info("Rent claimed successfully", data);
         return data;
 
@@ -998,7 +1068,37 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     }
   };
 
-  const value = {
+  // Add calculateLateFeesFunction
+  const calculateLateFeesFunction = async (propertyId) => {
+    try {
+      if (!contract) throw new Error("Contract not initialized");
+      
+      const lateFees = await contract.call('calculateLateFees', [propertyId]);
+      return lateFees;
+    } catch (error) {
+      console.error("Error calculating late fees:", error);
+      return ethers.BigNumber.from(0); // Return zero if there's an error
+    }
+  };
+
+  // Add effect to handle address changes
+  useEffect(() => {
+    const handleAccountsChanged = () => {
+      window.location.reload();
+    };
+
+    const ethereum = getEthereum();
+    if (ethereum) {
+      ethereum.on('accountsChanged', handleAccountsChanged);
+      
+      // Cleanup
+      return () => {
+        ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      };
+    }
+  }, []);
+
+  const contextValue = {
     contract,
     address,
     disconnect,
@@ -1040,10 +1140,11 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     getAccruedRentFunction,
     getRentPeriodInfo,
     deletePropertyMessageFunction,
+    calculateLateFeesFunction,
   };
 
   return (
-    <AppContext.Provider value={value}>
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

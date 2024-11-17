@@ -255,8 +255,8 @@ export default function ListProperty() {
                     >
                         {isLoading ? (
                             <div className={styles.loadingContainer}>
-                                <LoadingSpinner />
-                                <span>Uploading...</span>
+                                <div className={styles.loadingSpinner} />
+                                <span>Listing...</span>
                             </div>
                         ) : (
                             'List Property'
