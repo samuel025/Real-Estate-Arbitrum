@@ -208,10 +208,12 @@ export default function Marketplace() {
 
     const filteredAndSortedListings = listings
         .filter(listing => {
-            // Search filter
-            const propertyAddress = listing.property?.propertyAddress?.toLowerCase() || '';
+            // Search filter - check both address and property name
+            const propertyAddress = listing.seller?.toLowerCase() || '';
+            const propertyName = listing.property?.name?.toLowerCase() || '';
             const searchLower = searchTerm.toLowerCase();
-            const matchesSearch = propertyAddress.includes(searchLower);
+            const matchesSearch = propertyAddress.includes(searchLower) || 
+                                propertyName.includes(searchLower);
 
             // Price filter
             let matchesPrice = true;
@@ -264,9 +266,12 @@ export default function Marketplace() {
                 <div className={styles.filters}>
                     <input
                         type="text"
-                        placeholder="Search by address..."
+                        placeholder="Search by address or property name..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            setBuyErrors({}); // Clear any existing errors when search changes
+                        }}
                         className={styles.searchInput}
                     />
                     <select

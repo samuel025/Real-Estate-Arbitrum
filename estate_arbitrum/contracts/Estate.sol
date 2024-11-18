@@ -922,35 +922,45 @@ function updateProperty(
         external 
         propertyExists(_propertyId) 
     {
-        Shareholder storage shareholder = shareholders[_propertyId][msg.sender];
-
-        // 1. Enhanced input validation
+        // Initial validation
         if (_shares == 0) revert InvalidAmount();
         if (_pricePerShare == 0) revert InvalidPrice();
+        
+        Shareholder storage shareholder = shareholders[_propertyId][msg.sender];
+        
+        // Check if user has any shares at all
+        if (shareholder.sharesOwned == 0) revert InsufficientShares();
 
-        // Calculate total shares already listed
+        // Calculate total shares already listed with safe math
         uint256 totalListedShares = 0;
         for (uint256 i = 0; i < shareListings.length; i++) {
             if (shareListings[i].isActive &&
                 shareListings[i].propertyId == _propertyId &&
                 shareListings[i].seller == msg.sender) {
-                totalListedShares += shareListings[i].numberOfShares;
+                
+                // Safe addition check
+                uint256 newTotal = totalListedShares + shareListings[i].numberOfShares;
+                if (newTotal < totalListedShares) revert("Arithmetic overflow");
+                totalListedShares = newTotal;
             }
         }
 
-        // Check if user has enough unlisted shares
-        if (_shares > shareholder.sharesOwned - totalListedShares) revert InsufficientShares();
-        
-        // 2. Check for multiplication overflow in total price calculation
+        // Check if user has enough unlisted shares with safe math
+        uint256 availableShares = shareholder.sharesOwned;
+        if (totalListedShares > availableShares) revert InsufficientShares();
+        if (_shares > (availableShares - totalListedShares)) revert InsufficientShares();
+
+        // Check for multiplication overflow in total price calculation
         unchecked {
             if (_pricePerShare > type(uint256).max / _shares) 
                 revert InvalidPrice();
         }
 
-        // 3. Update share ownership
+        // Safe subtraction for share ownership
+        if (_shares > shareholder.sharesOwned) revert InsufficientShares();
         shareholder.sharesOwned -= _shares;
 
-        // 4. Create or update listing
+        // Create or update listing
         bool foundExisting = false;
         uint256 existingListingId;
         
@@ -967,7 +977,10 @@ function updateProperty(
 
         if (foundExisting) {
             ShareListing storage existingListing = shareListings[existingListingId];
-            existingListing.numberOfShares += _shares;
+            // Safe addition check for existing listing
+            uint256 newShareAmount = existingListing.numberOfShares + _shares;
+            if (newShareAmount < existingListing.numberOfShares) revert("Arithmetic overflow");
+            existingListing.numberOfShares = newShareAmount;
             
             emit SharesListed(
                 _propertyId,
@@ -978,6 +991,9 @@ function updateProperty(
             );
         } else {
             uint256 newListingId = shareListings.length;
+            // Check for array length overflow
+            if (newListingId >= type(uint256).max) revert("Max listings reached");
+            
             shareListings.push(ShareListing({
                 propertyId: _propertyId,
                 seller: msg.sender,

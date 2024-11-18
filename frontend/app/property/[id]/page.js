@@ -7,6 +7,7 @@ import { ethers } from 'ethers';
 import styles from './PropertyDetails.module.css';
 import Navbar from '@/components/Navbar';
 import ReviewModal from '@/components/ReviewModal';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 
 const formatBlockchainDate = (timestamp) => {
@@ -86,7 +87,7 @@ const formatAccruedRent = (value) => {
 };
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, getActiveListingsFunction, isContractLoading, connect } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, isContractLoading, propertyMessageFunction, connect } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -147,6 +148,16 @@ export default function PropertyDetails() {
     type: null  // 'fetch', 'transaction', etc.
   });
   const [rentPaymentAmount, setRentPaymentAmount] = useState('0');
+  const [propertyMessage, setPropertyMessage] = useState({
+    message: '',
+    timestamp: null,
+    sender: '',
+    isActive: false
+  });
+  const [newMessage, setNewMessage] = useState('');
+  const [isPostingMessage, setIsPostingMessage] = useState(false);
+  const [messageError, setMessageError] = useState('');
+  const [contractOwner, setContractOwner] = useState(null);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -339,11 +350,6 @@ export default function PropertyDetails() {
     getAccruedRentFunction,
     getRentPeriodStatus
   ]);
-
-  const getRentDueText = () => {
-    if (!rentPeriodStatus) return "Loading...";
-    return 'Claim rent'
-  };
 
   const handleInitialSharePurchase = async (e) => {
     e.preventDefault();
@@ -551,25 +557,6 @@ export default function PropertyDetails() {
     }
   };
 
-  const checkShareListingEligibility = async () => {
-    if (!property || !address) return;
-
-    try {
-      const shareholderInfo = await getShareholderInfoFunction(params.id);
-      
-      const unclaimedAmount = ethers.utils.formatEther(shareholderInfo[0].UnclaimedRent);
-      const hasUnclaimed = parseFloat(unclaimedAmount) > 0;
-
-      setRentClaimStatus({
-        hasUnclaimedRent: hasUnclaimed,
-        unclaimedAmount: unclaimedAmount,
-        canListShares: !hasUnclaimed
-      });
-
-    } catch (error) {
-      console.error("Error checking listing eligibility:", error);
-    }
-  };
 
   const handleListShares = async (e) => {
     e.preventDefault();
@@ -683,38 +670,6 @@ export default function PropertyDetails() {
     }
   };
 
-  // Add this to show rent breakdown
-  const RentBreakdown = ({ property, rentStatus, lateFees }) => {
-    return (
-        <div className={styles.rentBreakdown}>
-            <h4>Rent Payment Breakdown</h4>
-            <div className={styles.breakdownItem}>
-                <span>Base Rent:</span>
-                <span>{formatEther(property.rent)} ETH</span>
-            </div>
-            {lateFees > 0 && (
-                <div className={styles.breakdownItem}>
-                    <span>Late Fees:</span>
-                    <span>{formatEther(lateFees)} ETH</span>
-                </div>
-            )}
-            {rentStatus?.totalDebt > 0 && (
-                <div className={styles.breakdownItem}>
-                    <span>Outstanding Debt:</span>
-                    <span>{formatEther(rentStatus.totalDebt)} ETH</span>
-                </div>
-            )}
-            <div className={styles.breakdownTotal}>
-                <span>Total Required:</span>
-                <span>{formatEther(
-                    ethers.BigNumber.from(property.rent)
-                        .add(lateFees || 0)
-                        .add(rentStatus?.totalDebt || 0)
-                )} ETH</span>
-            </div>
-        </div>
-    );
-  };
 
   const renderPaymentButton = () => {
     if (!property?.owner || property.owner !== address) return null;
@@ -799,6 +754,100 @@ export default function PropertyDetails() {
     getRentPeriodStatus, 
     rentPaymentAmount
   ]);
+
+  useEffect(() => {
+    const fetchPropertyMessage = async () => {
+        try {
+            const message = await contract.call('getPropertyMessage', [params.id]);
+            setPropertyMessage({
+                message: message[0],
+                timestamp: message[1] ? new Date(Number(message[1]) * 1000) : null,
+                sender: message[2],
+                isActive: message[3]
+            });
+        } catch (error) {
+            console.error("Error fetching property message:", error);
+        }
+    };
+
+    if (contract && params.id) {
+        fetchPropertyMessage();
+    }
+  }, [contract, params.id]);
+
+  const handlePostMessage = async (e) => {
+    e.preventDefault();
+    setMessageError('');
+    setIsPostingMessage(true);
+
+    try {
+        await propertyMessageFunction(params.id, newMessage);
+        
+        // Update the message state
+        setPropertyMessage({
+            message: newMessage,
+            timestamp: new Date(),
+            sender: address,
+            isActive: true
+        });
+        setNewMessage('');
+    } catch (error) {
+        console.error("Error posting message:", error);
+        setMessageError(error.message || 'Failed to post message');
+    } finally {
+        setIsPostingMessage(false);
+    }
+  };
+
+  const handleDeleteMessage = async () => {
+    try {
+        await deletePropertyMessageFunction(params.id);
+        setPropertyMessage({
+            message: '',
+            timestamp: null,
+            sender: '',
+            isActive: false
+        });
+    } catch (error) {
+        console.error("Error deleting message:", error);
+        setMessageError(error.message || 'Failed to delete message');
+    }
+  };
+
+  useEffect(() => {
+    const fetchPropertyMessage = async () => {
+        try {
+            if (!contract || !params.id) return;
+            
+            const message = await contract.call('getPropertyMessage', [params.id]);
+            setPropertyMessage({
+                message: message[0],
+                timestamp: message[1] ? new Date(Number(message[1]) * 1000) : null,
+                sender: message[2],
+                isActive: message[3]
+            });
+        } catch (error) {
+            console.error("Error fetching property message:", error);
+        }
+    };
+
+    fetchPropertyMessage();
+  }, [contract, params.id]);
+
+  useEffect(() => {
+    const getContractOwner = async () => {
+        try {
+            if (contract) {
+                const owner = await contract.call('contractOwner');
+                setContractOwner(owner);
+            }
+        } catch (error) {
+            console.error("Error fetching contract owner:", error);
+        }
+    };
+
+    getContractOwner();
+  }, [contract]);
 
   if (isLoading || !dataFetched) {
     return (
@@ -913,6 +962,73 @@ export default function PropertyDetails() {
                 </div>
               )}
             </div>
+
+            {property && (
+                <div className={styles.messageSection}>
+                    <h3>Property Message</h3>
+                    
+                    {property.owner?.toLowerCase() === address?.toLowerCase() && (
+                        <div className={styles.messageForm}>
+                            <textarea
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                placeholder="Enter a message for property shareholders..."
+                                className={styles.messageInput}
+                                disabled={isPostingMessage}
+                            />
+                            {messageError && (
+                                <div className={styles.error}>{messageError}</div>
+                            )}
+                            <button
+                                onClick={handlePostMessage}
+                                disabled={!newMessage || isPostingMessage}
+                                className={styles.messageButton}
+                            >
+                                {isPostingMessage ? (
+                                    <div className={styles.loadingButton}>
+                                        <LoadingSpinner />
+                                        <span>Posting...</span>
+                                    </div>
+                                ) : (
+                                    'Post Message'
+                                )}
+                            </button>
+                        </div>
+                    )}
+
+                    {propertyMessage.isActive && (
+                        <div className={styles.currentMessage}>
+                            <div className={styles.messageContent}>
+                                <p className={styles.messageText}>{propertyMessage.message}</p>
+                                <div className={styles.messageMeta}>
+                                    <div className={styles.tags}>
+                                        {propertyMessage.sender?.toLowerCase() === property?.owner?.toLowerCase() && (
+                                            <span className={`${styles.tag} ${styles.ownerTag}`}>Property Owner</span>
+                                        )}
+                                        {contractOwner && propertyMessage.sender?.toLowerCase() === contractOwner?.toLowerCase() && (
+                                            <span className={`${styles.tag} ${styles.contractOwnerTag}`}>Contract Owner</span>
+                                        )}
+                                    </div>
+                                    <span className={styles.messageDate}>
+                                        Posted: {propertyMessage.timestamp?.toLocaleDateString()}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className={styles.messageActions}>
+                                {(property?.owner?.toLowerCase() === address?.toLowerCase() || 
+                                  propertyMessage.sender?.toLowerCase() === address?.toLowerCase()) && (
+                                    <button
+                                        onClick={handleDeleteMessage}
+                                        className={styles.deleteButton}
+                                    >
+                                        Delete Message
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {totalUserShares > 0 && (
               <div className={styles.shareholderSection}>
