@@ -4,8 +4,7 @@
 
 A sophisticated blockchain-based real estate tokenization platform built on Arbitrum that enables property owners to tokenize real estate assets, manage rentals, and create a liquid secondary market for property shares. The platform combines traditional real estate investment with DeFi mechanics to provide a seamless, transparent, and efficient property investment ecosystem.
 
-
-Live at: https://real-estate-tokenization-platform.vercel.app/
+Live at: https://realestate-tokenization.vercel.app/
 
 ## Core Features
 
