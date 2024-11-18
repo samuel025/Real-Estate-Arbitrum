@@ -87,7 +87,7 @@ const formatAccruedRent = (value) => {
 };
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, isContractLoading, propertyMessageFunction, connect } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, deletePropertyMessageFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, isContractLoading, propertyMessageFunction, connect } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -964,70 +964,78 @@ export default function PropertyDetails() {
             </div>
 
             {property && (
-                <div className={styles.messageSection}>
-                    <h3>Property Message</h3>
-                    
-                    {property.owner?.toLowerCase() === address?.toLowerCase() && (
-                        <div className={styles.messageForm}>
-                            <textarea
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                placeholder="Enter a message for property shareholders..."
-                                className={styles.messageInput}
-                                disabled={isPostingMessage}
-                            />
-                            {messageError && (
-                                <div className={styles.error}>{messageError}</div>
-                            )}
-                            <button
-                                onClick={handlePostMessage}
-                                disabled={!newMessage || isPostingMessage}
-                                className={styles.messageButton}
-                            >
-                                {isPostingMessage ? (
-                                    <div className={styles.loadingButton}>
-                                        <LoadingSpinner />
-                                        <span>Posting...</span>
-                                    </div>
-                                ) : (
-                                    'Post Message'
-                                )}
-                            </button>
-                        </div>
-                    )}
-
-                    {propertyMessage.isActive && (
-                        <div className={styles.currentMessage}>
-                            <div className={styles.messageContent}>
-                                <p className={styles.messageText}>{propertyMessage.message}</p>
-                                <div className={styles.messageMeta}>
-                                    <div className={styles.tags}>
-                                        {propertyMessage.sender?.toLowerCase() === property?.owner?.toLowerCase() && (
-                                            <span className={`${styles.tag} ${styles.ownerTag}`}>Property Owner</span>
-                                        )}
-                                        {contractOwner && propertyMessage.sender?.toLowerCase() === contractOwner?.toLowerCase() && (
-                                            <span className={`${styles.tag} ${styles.contractOwnerTag}`}>Contract Owner</span>
-                                        )}
-                                    </div>
-                                    <span className={styles.messageDate}>
-                                        Posted: {propertyMessage.timestamp?.toLocaleDateString()}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className={styles.messageActions}>
-                                {(property?.owner?.toLowerCase() === address?.toLowerCase() || 
-                                  propertyMessage.sender?.toLowerCase() === address?.toLowerCase()) && (
+                <>
+                    {/* Show section only if there's a message or user can post */}
+                    {(propertyMessage.isActive || 
+                      property.owner?.toLowerCase() === address?.toLowerCase() || 
+                      contractOwner?.toLowerCase() === address?.toLowerCase()) && (
+                        <div className={styles.messageSection}>
+                            <h3>Property Message</h3>
+                            
+                            {(property.owner?.toLowerCase() === address?.toLowerCase() || 
+                              contractOwner?.toLowerCase() === address?.toLowerCase()) && (
+                                <div className={styles.messageForm}>
+                                    <textarea
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        placeholder="Enter a message for property shareholders..."
+                                        className={styles.messageInput}
+                                        disabled={isPostingMessage}
+                                    />
+                                    {messageError && (
+                                        <div className={styles.error}>{messageError}</div>
+                                    )}
                                     <button
-                                        onClick={handleDeleteMessage}
-                                        className={styles.deleteButton}
+                                        onClick={handlePostMessage}
+                                        disabled={!newMessage || isPostingMessage}
+                                        className={styles.messageButton}
                                     >
-                                        Delete Message
+                                        {isPostingMessage ? (
+                                            <div className={styles.loadingButton}>
+                                                <LoadingSpinner />
+                                                <span>Posting...</span>
+                                            </div>
+                                        ) : (
+                                            'Post Message'
+                                        )}
                                     </button>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
+                            {propertyMessage.isActive && (
+                                <div className={styles.currentMessage}>
+                                    <div className={styles.messageContent}>
+                                        <p className={styles.messageText}>{propertyMessage.message}</p>
+                                        <div className={styles.messageMeta}>
+                                            <div className={styles.tags}>
+                                                {propertyMessage.sender?.toLowerCase() === property?.owner?.toLowerCase() && (
+                                                    <span className={`${styles.tag} ${styles.ownerTag}`}>Property Owner</span>
+                                                )}
+                                                {contractOwner && propertyMessage.sender?.toLowerCase() === contractOwner?.toLowerCase() && (
+                                                    <span className={`${styles.tag} ${styles.contractOwnerTag}`}>Contract Owner</span>
+                                                )}
+                                            </div>
+                                            <span className={styles.messageDate}>
+                                                Posted: {propertyMessage.timestamp?.toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className={styles.messageActions}>
+                                        {(property?.owner?.toLowerCase() === address?.toLowerCase() || 
+                                          propertyMessage.sender?.toLowerCase() === address?.toLowerCase()) && (
+                                            <button
+                                                onClick={handleDeleteMessage}
+                                                className={styles.deleteButton}
+                                            >
+                                                Delete Message
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
-                </div>
+                </>
             )}
 
             {totalUserShares > 0 && (
