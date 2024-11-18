@@ -1,120 +1,178 @@
-# RealEstate DApp
+# RealEstate Tokenization Platform
 
 ## Overview
 
-RealEstate DApp is a decentralized application built on Arbitrum Sepolia that revolutionizes real estate investment through tokenization. The platform enables property owners to tokenize their real estate assets and allows investors to purchase shares, earn rental income, and trade their holdings in a secure, transparent marketplace.
+A sophisticated blockchain-based real estate tokenization platform built on Arbitrum that enables property owners to tokenize real estate assets, manage rentals, and create a liquid secondary market for property shares. The platform combines traditional real estate investment with DeFi mechanics to provide a seamless, transparent, and efficient property investment ecosystem.
+
+
+Live at: https://real-estate-tokenization-platform.vercel.app/
 
 ## Core Features
 
-### Property Management
-- **Property Tokenization**: Property owners can list their real estate by creating tokens that represent shares of ownership
-- **Property Details**: Each listing includes comprehensive information:
-  - Property name, description, and images
-  - Total shares and price per share
-  - Rental terms and periods
-  - Physical property address
-  - Current ownership distribution
+### 1. Property Tokenization
+- **Fractional Ownership**: Properties are divided into shares, enabling fractional investment
+- **Flexible Configuration**: 
+  - Customizable total shares and share prices
+  - Configurable rent amounts and periods
+  - Detailed property information including images, description, and location
+- **Ownership Tracking**: Advanced tracking of share distribution and transfers
 
-### Investment Features
-- **Share Purchase**: Users can buy shares of properties directly from owners
-- **Secondary Market**: A marketplace for trading previously purchased shares
-  - List shares for sale at custom prices
-  - Buy shares from other investors
-  - Cancel or modify share listings
-- **Rental Income**: 
-  - Automatic rent distribution based on share ownership
-  - Claim accrued rental income
-  - View detailed rent payment history
-
-### Rental Management
-- **Rent Collection**: 
-  - Automated rent payment processing
-  - Late fee calculation and distribution
-  - Rent default tracking
-- **Rent Periods**: 
+### 2. Rental Management
+- **Smart Rent Collection**:
+  - Automated rent period tracking
+  - Late fee calculation (0.1% per day, max 30%)
+  - Default status monitoring
+- **Rent Distribution**:
+  - Proportional distribution based on share ownership
+  - Real-time rent accrual tracking
+  - Automated unclaimed rent handling
+- **Period Management**:
   - Configurable rental periods
-  - Real-time status tracking
-  - Automatic period management
+  - Automatic period transitions
+  - Default protection mechanisms
 
-### User Features
-- **Portfolio Management**:
-  - View owned properties and shares
-  - Track rental income and claims
-  - Manage share listings
-- **Property Reviews**: 
-  - Submit and view property ratings
-  - Leave detailed feedback
-- **Wallet Integration**:
-  - Connect with MetaMask
-  - Automatic network switching to Arbitrum Sepolia
-  - Real-time balance display
-
-### Advanced Features
-- **Smart Contract Security**:
-  - Built-in checks for rent payments
+### 3. Secondary Market
+- **Share Trading**:
+  - List shares with custom pricing
+  - Batch listing management
+  - Price updates and cancellations
+- **Market Features**:
+  - Price range filtering
+  - Active listing tracking
+  - User portfolio management
+- **Platform Security**:
+  - 0.5% platform fee
+  - Automated rent claims before transfers
   - Share ownership verification
-  - Automated fee distribution
-- **Market Analysis**:
-  - View property performance metrics
-  - Track rental yield
-  - Monitor market activity
 
-## Technical Architecture
+### 4. Property Management
+- **Owner Controls**:
+  - Property details updates
+  - Financial parameter management
+  - Rent period configuration
+- **Communication System**:
+  - Property-specific messaging
+  - Update and deletion capabilities
+  - Timestamp tracking
 
-### Smart Contract Layer
-- Property tokenization logic
-- Share transfer mechanisms
-- Rent distribution system
-- Market operations handling
+### 5. Review System
+- **Property Reviews**:
+  - 1-5 star rating system
+  - Written feedback
+  - One review per address
+- **Review Management**:
+  - Review storage and retrieval
+  - Review verification
+  - Historical tracking
 
-### Frontend Integration
-- React/Next.js based interface
-- Thirdweb SDK integration
-- Real-time blockchain updates
-- Responsive design
+## Technical Details
 
-### Key Components
-- Property listing management
-- Share trading system
-- Rent payment processing
-- User portfolio tracking
+### Smart Contract Architecture
 
-## Installation & Setup
+1. **Data Structures**:
+```solidity
+struct Property {
+    uint256 id;
+    string name;
+    address payable owner;
+    uint256 price;
+    uint256 totalShares;
+    uint256 availableShares;
+    uint256 rent;
+    uint256 rentPool;
+    // ... additional fields
+}
 
-### Prerequisites
+struct ShareListing {
+    uint256 propertyId;
+    address seller;
+    uint256 numberOfShares;
+    uint256 pricePerShare;
+    bool isActive;
+    // ... additional fields
+}
+```
 
-- Node.js (v14 or later)
-- npm or yarn
-- MetaMask wallet
+2. **Key Constants**:
+```solidity
+uint256 public constant PLATFORM_FEE = 50; // 0.5%
+uint256 public constant LATE_FEE_RATE = 10; // 0.1% per day
+uint256 public constant MAX_LATE_FEE = 3000; // 30%
+```
 
-### Getting Started
+### Security Features
 
-1. **Clone the repository:**
+1. **Access Control**:
+- Owner-specific functions
+- Share ownership verification
+- Rental period restrictions
 
-   ```bash
-   git clone https://github.com/yourusername/RealEstate-DApp.git
-   cd RealEstate-DApp
-   ```
+2. **Financial Safety**:
+- Overflow protection
+- Failed transfer handling
+- Balance verification
 
-2. **Install dependencies:**
+3. **Error Handling**:
+- Custom error messages
+- State validation
+- Transaction reversal protection
 
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+## Integration Guide
 
-3. **Set up environment variables:**
+### Property Listing
+```solidity
+function listProperty(
+    address payable _owner,
+    string memory _name,
+    uint256 _price,
+    uint256 _totalShares,
+    uint256 _rent,
+    uint256 _rentPeriod,
+    string memory _images,
+    string memory _description,
+    string memory _propertyAddress
+) external
+```
 
-   Create a `.env.local` file in the root of the `frontend` directory and add your environment variables (if any).
+### Share Purchase
+```solidity
+function purchaseShares(
+    uint256 _propertyId,
+    uint256 _shares,
+    address _buyer
+) external payable
+```
 
-4. **Run the application:**
+### Rent Payment
+```solidity
+function payRent(
+    uint256 _propertyId,
+    address _payer
+) external payable
+```
 
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
+## Events and Monitoring
+
+The contract emits detailed events for all major actions:
+- Property listings and updates
+- Share transfers and trades
+- Rent payments and claims
+- Default status changes
+- Platform fee withdrawals
+
+## Development Setup
+
+1. **Prerequisites**:
+- Solidity ^0.8.0
+- Arbitrum Sepolia testnet
+- Hardhat or Truffle
+
+2. **Testing**:
+```bash
+npx hardhat test
+# or
+truffle test
+```
 
    The application will be available at `http://localhost:3000`.
 
@@ -140,7 +198,7 @@ RealEstate DApp is a decentralized application built on Arbitrum Sepolia that re
 
 ## Smart Contract Addresses
 
-- Main Contract: `0x3e488Bb2eE72A6E89f6D9fe526dF77Ea8E751aad`
+- Main Contract: `0x5441FA1BeDe9AE0d359B068ebEa1f691A928C414`
 - Network: Arbitrum Sepolia
 
 ## Security Features
@@ -161,12 +219,3 @@ RealEstate DApp is a decentralized application built on Arbitrum Sepolia that re
 
 Contributions are welcome! If you have suggestions for improvements or new features, please open an issue or submit a pull request.
 
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [Thirdweb](https://thirdweb.com/) for providing the tools to build on the blockchain.
-- [React](https://reactjs.org/) for the frontend framework.
-- [Next.js](https://nextjs.org/) for server-side rendering and routing.
