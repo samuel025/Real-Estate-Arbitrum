@@ -802,6 +802,24 @@ export default function PropertyDetails() {
     getContractOwner();
   }, [contract]);
 
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const fetchedReviews = await getPropertyReviewsFunction(params.id);
+        console.log("Fetched reviews:", fetchedReviews);
+        if (Array.isArray(fetchedReviews)) {
+          setReviews(fetchedReviews);
+        }
+      } catch (error) {
+        console.error("Error fetching reviews:", error);
+      }
+    };
+
+    if (params.id) {
+      fetchReviews();
+    }
+  }, [params.id, getPropertyReviewsFunction]);
+
   if (isLoading || !dataFetched) {
     return (
       <>
@@ -1047,7 +1065,7 @@ export default function PropertyDetails() {
             <div className={styles.reviewsSection}>
               <div className={styles.reviewsHeader}>
                 <h3>Property Reviews</h3>
-                {!hasReviewed && shareholdersInfo[0]?.shares > 0 && (
+                {!hasReviewed && shareholdersInfo?.[0]?.shares > 0 && (
                   <button 
                     onClick={() => setIsReviewModalOpen(true)}
                     className={styles.reviewButton}
@@ -1057,32 +1075,49 @@ export default function PropertyDetails() {
                 )}
               </div>
               
+              <div style={{display: 'none'}}>
+                <p>Reviews array: {JSON.stringify(reviews)}</p>
+                <p>Is Array: {Array.isArray(reviews).toString()}</p>
+                <p>Length: {reviews?.length}</p>
+              </div>
+              
               {Array.isArray(reviews) && reviews.length > 0 ? (
                 <div className={styles.reviewsGrid}>
                   {reviews.map((review, index) => (
-                    <div key={`${review.reviewer}-${index}`} className={styles.reviewCard}>
-                      <div className={styles.reviewRating}>
-                        {[...Array(parseInt(review.rating))].map((_, i) => (
-                          <span key={i} className={`${styles.star} ${styles.filled}`}>★</span>
-                        ))}
-                        {[...Array(5 - parseInt(review.rating))].map((_, i) => (
-                          <span key={i} className={styles.star}>★</span>
-                        ))}
-                      </div>
-                      <p className={styles.reviewComment}>{review.comment}</p>
-                      <div className={styles.reviewFooter}>
-                        <span className={styles.reviewerAddress}>
-                          {`${review.reviewer.slice(0, 6)}...${review.reviewer.slice(-4)}`}
-                        </span>
+                    <div key={`${review.reviewer}-${review.timestamp}-${index}`} className={styles.reviewCard}>
+                      <div className={styles.reviewHeader}>
+                        <div className={styles.reviewRating}>
+                          {[...Array(5)].map((_, i) => (
+                            <span 
+                              key={i} 
+                              className={`${styles.star} ${i < parseInt(review.rating) ? styles.filled : ''}`}
+                            >
+                              ★
+                            </span>
+                          ))}
+                        </div>
                         <span className={styles.reviewDate}>
                           {formatBlockchainDate(review.timestamp)}
+                        </span>
+                      </div>
+                      
+                      <p className={styles.reviewComment}>{review.comment}</p>
+                      
+                      <div className={styles.reviewerInfo}>
+                        <span className={styles.reviewerAddress}>
+                          By: {`${review.reviewer.slice(0, 6)}...${review.reviewer.slice(-4)}`}
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className={styles.noReviews}>No reviews yet.</p>
+                <div className={styles.noReviews}>
+                  <p>No reviews yet for this property.</p>
+                  {shareholdersInfo?.[0]?.shares > 0 && !hasReviewed && (
+                    <p>Be the first to write a review!</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
