@@ -38,15 +38,12 @@ export default function Marketplace() {
                 return;
             }
 
-            // Get listings
             const activeListings = await getActiveListingsFunction();
 
             if (!activeListings || activeListings.length === 0) {
                 setListings([]);
                 return;
             }
-
-            // Get property details for each listing
             const listingsWithDetails = await Promise.all(
                 activeListings.map(async (listing) => {
                     try {
@@ -57,7 +54,7 @@ export default function Marketplace() {
 
                         return {
                             ...listing,
-                            property: propertyDetails[0] // Note: getPropertyFunction returns an array
+                            property: propertyDetails[0] 
                         };
                     } catch (err) {
                         console.error(`Error fetching property ${listing.propertyId}:`, err);
@@ -66,7 +63,6 @@ export default function Marketplace() {
                 })
             );
 
-            // Filter out null values
             const validListings = listingsWithDetails.filter(listing => listing !== null);
             setListings(validListings);
         } catch (err) {
@@ -87,7 +83,7 @@ export default function Marketplace() {
     useEffect(() => {
     }, [listings]);
 
-    const handleBuyShares = async (listingId, maxShares, pricePerShare) => {
+    const handleBuyShares = async (listingId, pricePerShare) => {
         try {
             if (!address) {
                 setBuyErrors(prev => ({
@@ -97,13 +93,11 @@ export default function Marketplace() {
                 return;
             }
 
-            // Get the property details for this listing
             const listing = listings.find(l => l.listingId === listingId.toString());
             if (!listing) {
                 throw new Error("Listing not found");
             }
 
-            // Check if buyer is the seller
             if (listing.seller.toLowerCase() === address.toLowerCase()) {
                 setBuyErrors(prev => ({
                     ...prev,
@@ -121,11 +115,9 @@ export default function Marketplace() {
                 return;
             }
 
-            // Calculate total cost
             const totalCostWei = ethers.BigNumber.from(pricePerShare)
                 .mul(ethers.BigNumber.from(sharesToBuyAmount));
 
-            // Check user's balance
             const provider = new ethers.providers.Web3Provider(window.ethereum);
             const balance = await provider.getBalance(address);
 
@@ -139,7 +131,6 @@ export default function Marketplace() {
 
             setIsBuyingBack(prev => ({ ...prev, [listingId]: true }));
 
-            // Attempt to buy shares
             await buyListedSharesFunction(
                 listingId,
                 sharesToBuyAmount,
@@ -148,12 +139,10 @@ export default function Marketplace() {
                 }
             );
 
-            // Clear form and show success
             setSharesToBuy(prev => ({ ...prev, [listingId]: '' }));
             setBuyErrors(prev => ({ ...prev, [listingId]: '' }));
             setSuccessMessage("Shares purchased successfully!");
 
-            // Refresh listings
             await fetchListings();
 
         } catch (err) {
@@ -180,19 +169,14 @@ export default function Marketplace() {
     const handleCancelListing = async (listingId) => {
         try {
             setError(null);
-            // Set loading state for this specific listing
             setIsCancelling(prev => ({ ...prev, [listingId]: true }));
             
-            // Call the contract function
             await cancelListingFunction(listingId);
             
-            // Refresh the listings
             await fetchListings();
             
-            // Show success message
             setSuccessMessage("Listing cancelled successfully");
             
-            // Clear success message after 3 seconds
             setTimeout(() => {
                 setSuccessMessage("");
             }, 3000);
@@ -201,21 +185,19 @@ export default function Marketplace() {
             console.error("Error cancelling listing:", err);
             setError("Failed to cancel listing. Please try again.");
         } finally {
-            // Clear loading state
             setIsCancelling(prev => ({ ...prev, [listingId]: false }));
         }
     };
 
     const filteredAndSortedListings = listings
         .filter(listing => {
-            // Search filter - check both address and property name
             const propertyAddress = listing.seller?.toLowerCase() || '';
             const propertyName = listing.property?.name?.toLowerCase() || '';
             const searchLower = searchTerm.toLowerCase();
             const matchesSearch = propertyAddress.includes(searchLower) || 
                                 propertyName.includes(searchLower);
 
-            // Price filter
+
             let matchesPrice = true;
             const price = ethers.BigNumber.isBigNumber(listing.pricePerShare)
                 ? Number(ethers.utils.formatEther(listing.pricePerShare))
@@ -249,7 +231,6 @@ export default function Marketplace() {
             }
         });
 
-    // Add this function to format prices consistently
     const formatPrice = (priceInWei) => {
         try {
             return Number(ethers.utils.formatEther(priceInWei)).toFixed(6);
@@ -270,7 +251,7 @@ export default function Marketplace() {
                         value={searchTerm}
                         onChange={(e) => {
                             setSearchTerm(e.target.value);
-                            setBuyErrors({}); // Clear any existing errors when search changes
+                            setBuyErrors({}); 
                         }}
                         className={styles.searchInput}
                     />
@@ -324,9 +305,6 @@ export default function Marketplace() {
                             <div key={index} className={styles.listingCard}>
                                 <div className={styles.listingHeader}>
                                     <div>
-                                        {/* <div className={styles.listingId}>
-                                            Listing ID: {listing.listingId !== undefined ? listing.listingId : 'N/A'}
-                                        </div> */}
                                         <h2>Property ID: {listing.propertyId?.toString()}</h2>
                                         {listing.property && (
                                             <h3 className={styles.propertyName}>

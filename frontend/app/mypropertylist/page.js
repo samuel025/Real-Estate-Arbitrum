@@ -18,7 +18,7 @@ export default function MyPropertyList() {
         const fetchProperties = async () => {
             if (address) {
                 setIsLoading(true);
-                setError(''); // Clear previous errors before loading
+                setError(''); 
 
                 try {
                     const fetchedProperties = await getOwnerPropertiesFunction();
@@ -31,7 +31,7 @@ export default function MyPropertyList() {
                     console.error("Error fetching properties:", err);
                     setError('Failed to load properties');
                 } finally {
-                    setIsLoading(false); // Only stop loading once all is complete
+                    setIsLoading(false); 
                 }
             } else {
                 setProperties([]);
@@ -77,8 +77,6 @@ export default function MyPropertyList() {
                     </div>
                 ) : (
                     <>
-                        {/* {error && <div className={styles.error}>{error}</div>} */}
-
                         {properties && properties.length > 0 ? (
                             <div className={styles.propertiesGrid}>
                                 {properties.map((property) => (

@@ -38,15 +38,12 @@ export const AppProvider = ({children}) => {
   const disconnect = useDisconnect();
   const signer = useSigner();
 
-  // Set up event listeners when component mounts
   useEffect(() => {
     const ethereum = getEthereum();
     if (ethereum) {
-      // Add event listeners
       ethereum.on('accountsChanged', handleAccountsChanged);
       ethereum.on('chainChanged', handleChainChanged);
 
-      // Check initial connection
       const checkConnection = async () => {
         try {
           const accounts = await ethereum.request({
@@ -54,7 +51,6 @@ export const AppProvider = ({children}) => {
           });
           
           if (accounts.length > 0) {
-            // Check if we're on the correct network
             const chainId = await ethereum.request({ 
               method: 'eth_chainId' 
             });
@@ -66,7 +62,6 @@ export const AppProvider = ({children}) => {
               });
             }
             
-            // Connect with ThirdWeb
             await connectWithMetamask();
           }
         } catch (error) {
@@ -77,23 +72,18 @@ export const AppProvider = ({children}) => {
       checkConnection();
     }
 
-    // Cleanup function
     return () => {
       if (ethereum) {
         ethereum.removeListener('accountsChanged', handleAccountsChanged);
         ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
-  }, []); // Empty dependency array means this runs once on mount
+  }, []); 
 
-  // Update handleAccountsChanged to properly handle disconnection
   const handleAccountsChanged = async (accounts) => {
     if (accounts.length === 0) {
-      // Handle disconnection
       disconnect();
-      // You might want to update your UI state here
     } else {
-      // Handle account change
       const ethereum = getEthereum();
       if (ethereum) {
         const chainId = await ethereum.request({ 
@@ -101,32 +91,26 @@ export const AppProvider = ({children}) => {
         });
         
         if (chainId !== '0x66eee') {
-          await connect(); // This will handle network switching
+          await connect(); 
         }
       }
     }
   };
 
-  // Update handleChainChanged to properly handle network changes
   const handleChainChanged = async (_chainId) => {
     if (_chainId !== '0x66eee') {
-      await connect(); // This will handle network switching
+      await connect(); 
     }
-    // Optionally refresh the page as recommended by MetaMask
     window.location.reload();
   };
 
-  // Safely check for window.ethereum and prioritize MetaMask
   const getEthereum = () => {
     if (typeof window !== 'undefined') {
-      // Check if we're on HTTPS
       const isHttps = window.location.protocol === 'https:';
       
-      // Check for multiple providers
       if (window.ethereum?.providers) {
         const metaMaskProvider = window.ethereum.providers.find(provider => provider.isMetaMask);
         if (metaMaskProvider) {
-          // Ensure provider is ready for HTTPS
           if (isHttps) {
             metaMaskProvider.enable = metaMaskProvider.request.bind(metaMaskProvider, {
               method: 'eth_requestAccounts'
@@ -137,9 +121,7 @@ export const AppProvider = ({children}) => {
         return window.ethereum.providers[0];
       }
       
-      // Single provider case
       if (window.ethereum) {
-        // Ensure provider is ready for HTTPS
         if (isHttps) {
           window.ethereum.enable = window.ethereum.request.bind(window.ethereum, {
             method: 'eth_requestAccounts'
@@ -168,13 +150,10 @@ export const AppProvider = ({children}) => {
       }
 
       try {
-        // Ensure we're handling the connection securely
         if (ethereum.isMetaMask) {
           try {
-            // First try the modern way
             await ethereum.request({ method: 'eth_requestAccounts' });
           } catch (requestError) {
-            // Fallback to legacy method if needed
             if (ethereum.enable) {
               await ethereum.enable();
             } else {
@@ -187,7 +166,6 @@ export const AppProvider = ({children}) => {
           await connectWithMetamask();
         }
 
-        // Check network after successful connection
         const chainId = await ethereum.request({ 
           method: 'eth_chainId' 
         });
@@ -199,7 +177,6 @@ export const AppProvider = ({children}) => {
               params: [{ chainId: '0x66eee' }],
             });
           } catch (switchError) {
-            // Handle network switch or add
             if (switchError.code === 4902) {
               await ethereum.request({
                 method: 'wallet_addEthereumChain',
@@ -221,7 +198,6 @@ export const AppProvider = ({children}) => {
           }
         }
 
-        // Get accounts after network is confirmed
         const accounts = await ethereum.request({
           method: 'eth_accounts'
         });
@@ -347,7 +323,6 @@ export const AppProvider = ({children}) => {
 
 const {mutateAsync: purchaseListedShares} = useContractWrite(contract, "buyListedShares");
 
-// Initial share purchase function
 const buySharesFunction = async (formData) => {
     const { propertyId, shares, price } = formData;
     try {
@@ -378,22 +353,17 @@ const buySharesFunction = async (formData) => {
     }
 };
 
-// Marketplace share purchase function
 const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     try {
         if (!overrides || !overrides.value) {
             throw new Error('Invalid transaction value');
         }
-
-        // Check user's balance before proceeding
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const balance = await provider.getBalance(address);
         
         if (balance.lt(overrides.value)) {
             throw new Error('INSUFFICIENT_FUNDS');
         }
-
-        // Debug the listing before purchase
         const listingDetails = await contract.call('getListingDetails', [listingId]);
 
         if (!listingDetails.exists || !listingDetails.isActive) {
@@ -409,7 +379,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     } catch (error) {
         console.error("Failed to purchase listed shares", error);
         
-        // Handle specific error types
         if (error.message === 'INSUFFICIENT_FUNDS') {
             throw new Error('Insufficient funds in wallet');
         } else if (error.code === 'INSUFFICIENT_FUNDS' || 
@@ -431,18 +400,14 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         if (!contract || !address) {
             throw new Error("Contract or wallet not connected");
         }
-
-        // Get all the required amounts
         const property = await contract.call('getProperty', [propertyId]);
         const lateFees = await contract.call('calculateLateFees', [propertyId]);
         const rentStatus = await contract.call('getRentStatus', [propertyId]);
         
-        // Calculate total required amount
         const totalRequired = ethers.BigNumber.from(property.rent)
             .add(lateFees)
             .add(rentStatus.totalDebt || 0);
 
-        // Check user's balance before proceeding
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const balance = await provider.getBalance(address);
 
@@ -450,15 +415,13 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
             throw new Error('INSUFFICIENT_FUNDS');
         }
 
-        // Verify rent is actually due
         const isRentDue = await contract.call('isRentDue', [propertyId]);
         if (!isRentDue) {
             throw new Error('RENT_NOT_DUE');
         }
 
-        // Pass both propertyId and payer address to the contract
         const data = await payRent({
-            args: [propertyId, address], // Add the payer's address here
+            args: [propertyId, address], 
             overrides: {
                 value: totalRequired
             }
@@ -491,12 +454,9 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
   const claimRentFunction = async (formData) => {
     const {propertyId, shareholder} = formData;
     try {
-        // Validate inputs
         if (!propertyId || !shareholder) {
             throw new Error("Missing required parameters");
         }
-
-        // Ensure shareholder is a valid address
         if (!ethers.utils.isAddress(shareholder)) {
             throw new Error("Invalid shareholder address");
         }
@@ -504,14 +464,11 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         const data = await claimRent({
             args: [propertyId, shareholder]
         });
-
-        // Wait for transaction confirmation
         console.info("Rent claimed successfully", data);
         return data;
 
     } catch (error) {
         console.error("Failed to claim rent:", error);
-        // Handle specific contract errors
         if (error.message.includes("NoRentToClaim")) {
             throw new Error("No rent available to claim");
         } else if (error.message.includes("RentPeriodNotEnded")) {
@@ -560,11 +517,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
       if (!propertyId) throw new Error("Property ID is required");
       if (!shares || shares <= 0) throw new Error("Invalid number of shares");
       if (!pricePerShare || parseFloat(pricePerShare) <= 0) throw new Error("Invalid price per share");
-
-      // Convert price to Wei for the contract
       const priceInWei = ethers.utils.parseEther(pricePerShare.toString());
-
-      // Execute the listing
       const data = await listSharesForSale({
         args: [propertyId, shares, priceInWei]
       });
@@ -574,8 +527,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
     } catch (error) {
       console.error("Error in listSharesForSaleFunction:", error);
-      
-      // Handle specific contract errors
       if (error.message.includes("InsufficientShares")) {
         throw new Error("You don't have enough shares to list");
       } else if (error.message.includes("InvalidPrice")) {
@@ -628,19 +579,16 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
             return [];
         }
         const [listings, listingIds] = await contract.call('getAllListings');
-
-        // If no listings found
         if (!listings || listings.length === 0) {
             return [];
         }
 
-        // Process and return the listings
         const processedListings = listings.map((listing, index) => ({
             listingId: listingIds[index].toString(),
             propertyId: listing.propertyId.toString(),
             seller: listing.seller,
             numberOfShares: listing.numberOfShares.toString(),
-            pricePerShare: listing.pricePerShare, // Keep as BigNumber for now
+            pricePerShare: listing.pricePerShare, 
             isActive: listing.isActive,
             listingTime: listing.listingTime.toString()
         }));
@@ -662,7 +610,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
         const listings = await contract.call('getPropertyListings', [propertyId]);
 
-        // Map and filter active listings
         const activeListings = listings
             .filter(listing => listing && listing.isActive)
             .map(listing => ({
@@ -761,9 +708,9 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
       const shareholderInfo = await contract.call('getShareholderInfo', [propertyId, address]);
      
       return [{
-        shares: shareholderInfo[0],        // shares
-        rentClaimed: shareholderInfo[1],   // rentClaimed
-        UnclaimedRent: shareholderInfo[2]  // unclaimedRent
+        shares: shareholderInfo[0],       
+        rentClaimed: shareholderInfo[1],   
+        UnclaimedRent: shareholderInfo[2]  
       }];
     } catch (error) {
       console.error("Unable to fetch data:", error);
@@ -777,13 +724,12 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     try {
       const reviewData = await contract.call('getPropertyReviews', [propertyId]);
       
-      // Check if reviewData exists and has the expected structure
       if (!reviewData || !Array.isArray(reviewData)) {
         return [];
       }
       
       const parsedReviews = reviewData
-        .filter(review => review && review.reviewer) // Filter out any null or invalid reviews
+        .filter(review => review && review.reviewer) 
         .map(review => ({
           reviewer: review.reviewer,
           rating: review.rating.toString(),
@@ -865,8 +811,8 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         const endTimestamp = status.periodEnd.toNumber();
         
         return {
-            periodStart: startTimestamp,  // Keep as timestamp
-            periodEnd: endTimestamp,      // Keep as timestamp
+            periodStart: startTimestamp,  
+            periodEnd: endTimestamp,     
             isActive: status.isActive,
             remainingTime: Number(status.remainingTime)
         };
@@ -887,7 +833,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
         const property = await contract.call('getProperty', [propertyId]);
 
-        // Process the property data
         const processedProperty = {
             id: property.id.toString(),
             owner: property.owner,
@@ -897,12 +842,12 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
             availableShares: property.availableShares.toString(),
             rent: property.rent.toString(),
             rentPeriod: property.rentPeriod.toString(),
-            images: property.images, // Make sure this is a valid URL
+            images: property.images, 
             description: property.description,
             propertyAddress: property.propertyAddress
         };
 
-        return [processedProperty]; // Keeping the array format as expected by the marketplace
+        return [processedProperty]; 
     } catch (error) {
         console.error("Error in getPropertyFunction:", error);
         return null;
@@ -919,12 +864,10 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     }
   };
 
-  // Add getRentPeriodsFunction
   const getRentPeriodsFunction = async (propertyId) => {
     try {
       const rentPeriods = await contract.call('getRentPeriodStatus', [propertyId]);
       
-      // Add null checks and default values
       return {
         periodStart: rentPeriods.periodStart ? new Date(rentPeriods.periodStart.toNumber() * 1000) : null,
         periodEnd: rentPeriods.periodEnd ? new Date(rentPeriods.periodEnd.toNumber() * 1000) : null,
@@ -938,7 +881,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     }
   };
 
-  // Add function to get platform fees
   const getPlatformFeesFunction = async () => {
     try {
       const fees = await contract.call('getPlatformFees');
@@ -983,12 +925,10 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
   const getAccruedRentFunction = async (propertyId, shareholder) => {
     try {
-        // Contract initialization check
         if (!contract) {
             throw new Error("Contract not initialized");
         }
 
-        // Input validation
         if (!propertyId || !shareholder) {
             throw new Error("Missing required parameters");
         }
@@ -999,10 +939,9 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
         const rentInfo = await contract.call('getAccruedRent', [propertyId, shareholder]);
         
-        // Format the response
         return {
-            accruedRent: ethers.utils.formatEther(rentInfo.accruedRent), // Convert to ETH
-            accruedRentWei: rentInfo.accruedRent, // Keep original BigNumber
+            accruedRent: ethers.utils.formatEther(rentInfo.accruedRent), 
+            accruedRentWei: rentInfo.accruedRent, 
             periodStart: new Date(rentInfo.periodStart.toNumber() * 1000),
             periodEnd: new Date(rentInfo.periodEnd.toNumber() * 1000),
             lastClaim: new Date(rentInfo.lastClaim.toNumber() * 1000),
@@ -1017,7 +956,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
 
   const getRentPeriodInfo = async (propertyId) => {
     try {
-        // Get property data and accrued rent info
         const [property, rentInfo] = await Promise.all([
             contract.call('properties', [propertyId]),
             contract.call('getAccruedRent', [propertyId, address])
@@ -1027,11 +965,10 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         const periodStart = property.currentRentPeriodStart.toNumber();
         const periodEnd = property.currentRentPeriodEnd.toNumber();
         
-        // Match contract logic for active status
         const isActive = (
             currentTimestamp >= periodStart &&
             currentTimestamp <= periodEnd &&
-            property.rentPool.gt(0) // Check if rentPool is greater than 0
+            property.rentPool.gt(0) 
         );
 
         return {
@@ -1068,7 +1005,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     }
   };
 
-  // Add calculateLateFeesFunction
   const calculateLateFeesFunction = async (propertyId) => {
     try {
       if (!contract) throw new Error("Contract not initialized");
@@ -1077,11 +1013,10 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
       return lateFees;
     } catch (error) {
       console.error("Error calculating late fees:", error);
-      return ethers.BigNumber.from(0); // Return zero if there's an error
+      return ethers.BigNumber.from(0); 
     }
   };
 
-  // Add effect to handle address changes
   useEffect(() => {
     const handleAccountsChanged = () => {
       window.location.reload();
@@ -1091,7 +1026,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
     if (ethereum) {
       ethereum.on('accountsChanged', handleAccountsChanged);
       
-      // Cleanup
       return () => {
         ethereum.removeListener('accountsChanged', handleAccountsChanged);
       };

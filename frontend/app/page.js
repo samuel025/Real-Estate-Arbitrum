@@ -12,23 +12,18 @@ import { useContractRead } from "@thirdweb-dev/react";
 export default function Home() {
   const { contract } = useAppContext();
   
-  // Use useContractRead hook directly in the component
   const { data: properties, isLoading, error } = useContractRead(
     contract,
     "getAllProperties"
   );
 
-  // Format ETH values without trailing zeros
   const formatEth = (value) => {
     try {
       const formattedValue = ethers.utils.formatEther(value);
-      // Convert to number and back to string to remove trailing zeros
       const parsed = parseFloat(formattedValue);
-      // If it's a whole number, don't show decimals
       if (parsed % 1 === 0) {
         return parsed.toString();
       }
-      // Otherwise return the number with natural decimal places
       return parsed.toString();
     } catch (err) {
       console.error("Error formatting ETH value:", err);
@@ -36,7 +31,6 @@ export default function Home() {
     }
   };
 
-  // Parse properties data
   const parsedProperties = properties?.map((property) => ({
     propertyId: property.id.toString(),
     owner: property.owner,

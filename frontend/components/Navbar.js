@@ -13,7 +13,6 @@ export default function Navbar() {
   const menuRef = useRef(null);
   const mobileMenuRef = useRef(null);
 
-  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -35,7 +34,6 @@ export default function Navbar() {
           RealEstate
         </Link>
 
-        {/* Hamburger Menu Button */}
         <button 
           className={styles.hamburger}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -43,7 +41,6 @@ export default function Navbar() {
           {isMobileMenuOpen ? <FaTimes /> : <FaBars />}
         </button>
 
-        {/* Navigation Links - Desktop & Mobile */}
         <div className={`${styles.navLinks} ${isMobileMenuOpen ? styles.mobileOpen : ''}`} ref={mobileMenuRef}>
           <Link href="/" className={styles.navLink} onClick={() => setIsMobileMenuOpen(false)}>
             Home

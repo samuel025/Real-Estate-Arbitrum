@@ -14,20 +14,16 @@ const formatBlockchainDate = (timestamp) => {
     if (!timestamp) return 'Not set';
     
     try {
-        // Convert to number if it's a string
         const timestampNum = typeof timestamp === 'string' ? 
             parseInt(timestamp) : Number(timestamp);
         
-        // Create date object from timestamp (seconds to milliseconds)
         const date = new Date(timestampNum * 1000);
-        
-        // Validate date
+ 
         if (isNaN(date.getTime())) {
             console.error('Invalid date from timestamp:', timestamp);
             return 'Invalid date';
         }
 
-        // Format the date
         return new Intl.DateTimeFormat('en-US', {
             year: 'numeric',
             month: 'long',
@@ -35,7 +31,7 @@ const formatBlockchainDate = (timestamp) => {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true,
-            timeZone: 'UTC'  // Use UTC to avoid timezone issues
+            timeZone: 'UTC' 
         }).format(date);
     } catch (error) {
         console.error('Error formatting date:', error);
@@ -46,15 +42,12 @@ const formatBlockchainDate = (timestamp) => {
 const formatBigNumber = (value) => {
   if (!value) return '0';
   try {
-    // If value is already a string in ETH format, return it
     if (typeof value === 'string' && value.includes('.')) {
       return value;
     }
-    // If value is a BigNumber
     if (value._isBigNumber) {
       return ethers.utils.formatEther(value);
     }
-    // Try to convert to BigNumber first
     return ethers.utils.formatEther(ethers.BigNumber.from(value));
   } catch (error) {
     console.error('Error formatting BigNumber:', error);
@@ -62,23 +55,19 @@ const formatBigNumber = (value) => {
   }
 };
 
-// Update the formatAccruedRent helper function
 const formatAccruedRent = (value) => {
   if (!value) return '0';
   try {
-    // If value is a BigNumber
+
     if (value._isBigNumber) {
       return ethers.utils.formatEther(value);
     }
-    // If value is a hex string
     if (typeof value === 'string' && value.startsWith('0x')) {
       return ethers.utils.formatEther(value);
     }
-    // If value is already a formatted string with decimals
     if (typeof value === 'string' && value.includes('.')) {
       return value;
     }
-    // Try to convert to BigNumber first
     return ethers.utils.formatEther(ethers.BigNumber.from(value));
   } catch (error) {
     console.error("Error formatting accrued rent:", error, "Value:", value);
@@ -145,7 +134,7 @@ export default function PropertyDetails() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [errorState, setErrorState] = useState({
     message: null,
-    type: null  // 'fetch', 'transaction', etc.
+    type: null  
   });
   const [rentPaymentAmount, setRentPaymentAmount] = useState('0');
   const [propertyMessage, setPropertyMessage] = useState({
@@ -220,12 +209,10 @@ export default function PropertyDetails() {
             getRentPeriodsFunction ? getRentPeriodsFunction(params.id) : null
         ]);
 
-        // Validate property data
         if (!propertyData?.[0]) {
             throw new Error("Property not found");
         }
 
-        // Update states
         setProperty(propertyData[0]);
         setPropertyListings(listings || []);
         setTotalListedShares(calculateTotalListedShares(listings));
@@ -234,7 +221,6 @@ export default function PropertyDetails() {
             setShareholdersInfo(shareholderData);
             setTotalUserShares(parseInt(shareholderData[0].shares) || 0);
             
-            // Format claimed rent if it exists
             if (shareholderData[0].rentClaimed) {
                 const formattedClaimedRent = formatBigNumber(shareholderData[0].rentClaimed);
             }
@@ -327,16 +313,12 @@ export default function PropertyDetails() {
       }
     };
 
-    // Only start interval if we have the necessary data
     if (rentPeriodStatus?.isActive && address && contract) {
-      // Update immediately
       updateAccruedRent();
       
-      // Then update every 3 seconds
       intervalId = setInterval(updateAccruedRent, 3000);
     }
 
-    // Cleanup function
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
@@ -373,9 +355,7 @@ export default function PropertyDetails() {
 
         setSuccessMessage("Shares purchased successfully!");
         
-        // Wait briefly for the success message to be visible
         setTimeout(() => {
-            // Refresh the page
             window.location.reload();
         }, 2000);
         
@@ -404,10 +384,8 @@ export default function PropertyDetails() {
             shareholder: address
         });
 
-        // Wait for blockchain update
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Refresh data
         const [updatedShareholderInfo, updatedAccruedRent] = await Promise.all([
             getShareholderInfoFunction(params.id),
             getAccruedRentFunction(params.id, address)
@@ -433,7 +411,6 @@ export default function PropertyDetails() {
             }));
         }
 
-        // Show success message
         setSuccessMessage('Rent claimed successfully!');
         setTimeout(() => setSuccessMessage(''), 5000);
 
@@ -459,7 +436,6 @@ export default function PropertyDetails() {
         ]);
 
 
-        // Make sure we have the property rent value
         if (!property?.rent) {
             return;
         }
@@ -474,7 +450,6 @@ export default function PropertyDetails() {
         setRentPaymentAmount(formattedTotal);
     } catch (error) {
         console.error('Error calculating rent payment:', error);
-        // Set a fallback amount using just the base rent
         if (property?.rent) {
             setRentPaymentAmount(ethers.utils.formatEther(property.rent));
         }
@@ -501,7 +476,6 @@ export default function PropertyDetails() {
             propertyId: params.id
         });
 
-        // Refresh data after successful payment
         await fetchAllData();
         setSuccessMessage('Rent paid successfully!');
 
@@ -521,26 +495,23 @@ export default function PropertyDetails() {
 
   const handleReviewSubmit = async (rating, comment) => {
     try {
-      // Submit the review
       await submitReviewFunction({
         propertyId: params.id,
         rating,
         comment
       });
 
-      // Optimistically update the reviews state
       const newReview = {
         reviewer: address,
         rating: rating,
         comment: comment,
-        timestamp: Math.floor(Date.now() / 1000) // Current timestamp in seconds
+        timestamp: Math.floor(Date.now() / 1000) 
       };
 
       setReviews(prevReviews => [...prevReviews, newReview]);
       setHasReviewed(true);
       setIsReviewModalOpen(false);
 
-      // Optional: Fetch the actual updated data from the blockchain
       const updatedReviews = await getPropertyReviewsFunction(params.id);
       if (Array.isArray(updatedReviews)) {
         setReviews(updatedReviews);
@@ -548,11 +519,10 @@ export default function PropertyDetails() {
 
     } catch (error) {
       console.error("Error submitting review:", error);
-      // If there's an error, refresh the reviews to ensure correct state
       const updatedReviews = await getPropertyReviewsFunction(params.id);
       if (Array.isArray(updatedReviews)) {
         setReviews(updatedReviews);
-        setHasReviewed(false); // Reset hasReviewed since the submission failed
+        setHasReviewed(false); 
       }
     }
   };
@@ -565,13 +535,11 @@ export default function PropertyDetails() {
         setSellError('');
         setListingSuccess('');
 
-        // Convert shares to number and validate
         const numberOfShares = parseInt(sharesToSell);
         if (isNaN(numberOfShares) || numberOfShares <= 0) {
             throw new Error("Number of shares must be greater than 0");
         }
 
-        // Validate price
         const priceAsNumber = parseFloat(pricePerShare);
         if (isNaN(priceAsNumber) || priceAsNumber <= 0) {
             throw new Error("Invalid price format");
@@ -596,7 +564,6 @@ export default function PropertyDetails() {
     }
   };
 
-  // Check if the user has shares
   const userShares = useMemo(() => {
     if (!shareholdersInfo || !Array.isArray(shareholdersInfo) || shareholdersInfo.length === 0) {
       return 0;
@@ -604,7 +571,6 @@ export default function PropertyDetails() {
     return shareholdersInfo[0]?.shares ? parseInt(shareholdersInfo[0].shares) : 0;
   }, [shareholdersInfo]);
 
-  // Add a function to display the total required amount
   const getTotalRequiredAmount = async () => {
     try {
       const lateFees = await contract.call('calculateLateFees', [params.id]);
@@ -617,11 +583,10 @@ export default function PropertyDetails() {
       return ethers.utils.formatEther(totalRequired);
     } catch (error) {
       console.error("Error calculating total required amount:", error);
-      return ethers.utils.formatEther(property.rent); // fallback to just rent amount
+      return ethers.utils.formatEther(property.rent); 
     }
   };
 
-  // Update your UI to show the total required amount
   useEffect(() => {
     if (property) {
       getTotalRequiredAmount().then(amount => {
@@ -630,7 +595,6 @@ export default function PropertyDetails() {
     }
   }, [property]);
 
-  // Update the connect button handler
   const handleConnect = async () => {
     try {
       await connect();
@@ -643,7 +607,6 @@ export default function PropertyDetails() {
   const handleRemoveProperty = async () => {
     if (!address || property.owner !== address) return;
     
-    // Confirm with user
     if (!window.confirm('Are you sure you want to remove this property? This action cannot be undone.')) {
       return;
     }
@@ -654,14 +617,11 @@ export default function PropertyDetails() {
         propertyId: params.id
       });
 
-      // Wait for transaction to be processed
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Clear states before navigation
       setShareholdersInfo([]);
       setProperty(null);
       
-      // Use replace instead of push to prevent back navigation to removed property
       router.replace('/');
       
     } catch (error) {
@@ -692,7 +652,6 @@ export default function PropertyDetails() {
     );
   };
 
-  // Create a notification component
   const Notification = ({ message, type }) => {
     if (!message) return null;
 
@@ -712,7 +671,6 @@ export default function PropertyDetails() {
     );
   };
 
-  // Update useEffect to check rent status
   useEffect(() => {
     const checkRentStatus = async () => {
       if (!contract || !params.id) return;
@@ -723,9 +681,6 @@ export default function PropertyDetails() {
           getRentPeriodStatus(params.id)
         ]);
 
-        // Rent is due if:
-        // 1. checkisRentDueFunction returns true OR
-        // 2. We're past the current period end
         const currentTimestamp = Math.floor(Date.now() / 1000);
         const isPastDue = rentPeriodStatus.periodEnd > 0 && currentTimestamp > rentPeriodStatus.periodEnd;
         
@@ -741,7 +696,6 @@ export default function PropertyDetails() {
 
     if (property?.owner === address) {
       checkRentStatus();
-      // Check every 30 seconds
       const intervalId = setInterval(checkRentStatus, 30000);
       return () => clearInterval(intervalId);
     }
@@ -783,7 +737,6 @@ export default function PropertyDetails() {
     try {
         await propertyMessageFunction(params.id, newMessage);
         
-        // Update the message state
         setPropertyMessage({
             message: newMessage,
             timestamp: new Date(),
@@ -965,7 +918,6 @@ export default function PropertyDetails() {
 
             {property && (
                 <>
-                    {/* Show section only if there's a message or user can post */}
                     {(propertyMessage.isActive || 
                       property.owner?.toLowerCase() === address?.toLowerCase() || 
                       contractOwner?.toLowerCase() === address?.toLowerCase()) && (
