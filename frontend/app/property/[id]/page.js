@@ -1138,7 +1138,7 @@ export default function PropertyDetails() {
                         <span className={styles.price}>{ethers.utils.formatEther(property.price)} ETH</span>
                       </div>
                       <div className={styles.detailItem}>
-                        <span className={styles.label}>Monthly Rent:</span>
+                        <span className={styles.label}>Periodic Rent:</span>
                         <span className={styles.rent}>{ethers.utils.formatEther(property.rent)} ETH</span>
                       </div>
                     </div>
