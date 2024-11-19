@@ -98,14 +98,6 @@ export default function Marketplace() {
                 throw new Error("Listing not found");
             }
 
-            if (listing.seller.toLowerCase() === address.toLowerCase()) {
-                setBuyErrors(prev => ({
-                    ...prev,
-                    [listingId]: "You cannot buy your own listed shares"
-                }));
-                return;
-            }
-
             const sharesToBuyAmount = sharesToBuy[listingId];
             if (!sharesToBuyAmount || sharesToBuyAmount <= 0) {
                 setBuyErrors(prev => ({
@@ -115,28 +107,15 @@ export default function Marketplace() {
                 return;
             }
 
-            const totalCostWei = ethers.BigNumber.from(pricePerShare)
-                .mul(ethers.BigNumber.from(sharesToBuyAmount));
-
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            const balance = await provider.getBalance(address);
-
-            if (balance.lt(totalCostWei)) {
-                setBuyErrors(prev => ({
-                    ...prev,
-                    [listingId]: "Insufficient funds in your wallet"
-                }));
-                return;
-            }
+            // Calculate total cost without platform fee
+            const pricePerShareBN = ethers.BigNumber.from(listing.pricePerShare);
+            const totalCostBN = pricePerShareBN.mul(sharesToBuyAmount);
 
             setIsBuyingBack(prev => ({ ...prev, [listingId]: true }));
 
             await buyListedSharesFunction(
                 listingId,
-                sharesToBuyAmount,
-                {
-                    value: totalCostWei
-                }
+                sharesToBuyAmount
             );
 
             setSharesToBuy(prev => ({ ...prev, [listingId]: '' }));
@@ -149,12 +128,12 @@ export default function Marketplace() {
             console.error("Error buying shares:", err);
             let errorMessage = "Failed to buy shares";
 
-            if (err.message.includes("insufficient funds")) {
+            if (err.message.includes("InvalidAmount")) {
+                errorMessage = "Invalid transaction amount. Please try again.";
+            } else if (err.message.includes("insufficient funds")) {
                 errorMessage = "Insufficient funds in your wallet";
             } else if (err.code === 4001) {
                 errorMessage = "Transaction rejected by user";
-            } else if (err.message.includes("user rejected")) {
-                errorMessage = "Transaction cancelled";
             }
 
             setBuyErrors(prev => ({

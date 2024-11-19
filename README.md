@@ -197,7 +197,7 @@ truffle test
 
 ## Smart Contract Addresses
 
-- Main Contract: `0x5441FA1BeDe9AE0d359B068ebEa1f691A928C414`
+- Main Contract: `0x039B0a4E5C69CD5C356c8d94d86C79BD208Ea3ad`
 - Network: Arbitrum Sepolia
 
 ## Security Features

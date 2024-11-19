@@ -38,7 +38,7 @@ export default function ListProperty() {
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            if (file.size > 10 * 1024 * 1024) { // 10MB limit
+            if (file.size > 10 * 1024 * 1024) { 
                 setError('File size should be less than 10MB');
                 return;
             }
@@ -57,7 +57,6 @@ export default function ListProperty() {
                 throw new Error("Please connect your wallet first");
             }
 
-            // Upload image to Pinata
             let ipfsUrl = '';
             if (selectedImage) {
                 ipfsUrl = await uploadToPinata(selectedImage);
@@ -88,7 +87,7 @@ export default function ListProperty() {
                 totalSharesBN,
                 rentInWei,
                 rentPeriodBN,
-                ipfsUrl, // IPFS URL from Pinata
+                ipfsUrl, 
                 formData.description,
                 formData.propertyAddress
             );

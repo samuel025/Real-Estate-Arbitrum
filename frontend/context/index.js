@@ -12,6 +12,9 @@ import {
 
 import { ethers } from "ethers";
 
+// Add these constants to match the contract
+const PLATFORM_FEE = 50; // 0.5%
+const BASIS_POINTS = 10000;
 
 const AppContext = createContext();
 
@@ -29,7 +32,7 @@ export const AppProvider = ({children}) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
-  const {contract} = useContract("0x5441FA1BeDe9AE0d359B068ebEa1f691A928C414")
+  const {contract} = useContract("0x039B0a4E5C69CD5C356c8d94d86C79BD208Ea3ad")
   const {mutateAsync: listSharesForSale} = useContractWrite(contract, "listSharesForSale")
   const { mutateAsync: buyShares } = useContractWrite(contract, "purchaseShares");
 
@@ -353,34 +356,35 @@ const buySharesFunction = async (formData) => {
     }
 };
 
-const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
+const buyListedSharesFunction = async (listingId, sharesToBuy) => {
     try {
-        if (!overrides || !overrides.value) {
-            throw new Error('Invalid transaction value');
-        }
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const balance = await provider.getBalance(address);
-        
-        if (balance.lt(overrides.value)) {
-            throw new Error('INSUFFICIENT_FUNDS');
-        }
+        // Get listing details first
         const listingDetails = await contract.call('getListingDetails', [listingId]);
-
-        if (!listingDetails.exists || !listingDetails.isActive) {
+        
+        if (!listingDetails || !listingDetails[1]) { // Check exists and isActive
             throw new Error('Invalid or inactive listing');
         }
 
-        const data = await purchaseListedShares({
-            args: [listingId, sharesToBuy],
-            overrides: overrides
+        // Get exact price per share from the listing
+        const pricePerShare = ethers.BigNumber.from(listingDetails[5]); // pricePerShare
+        const totalCost = pricePerShare.mul(sharesToBuy);
+
+        // Send exactly the total cost without platform fee
+        // The contract will handle the platform fee internally
+        const data = await contract.call('buyListedShares', [
+            listingId,
+            sharesToBuy
+        ], {
+            value: totalCost // Exactly matches what the contract expects
         });
+
         console.info("Listed shares purchase successful", data);
         return data;
     } catch (error) {
         console.error("Failed to purchase listed shares", error);
         
-        if (error.message === 'INSUFFICIENT_FUNDS') {
-            throw new Error('Insufficient funds in wallet');
+        if (error.message.includes('InvalidAmount')) {
+            throw new Error('Invalid transaction amount. Please check the share price and quantity.');
         } else if (error.code === 'INSUFFICIENT_FUNDS' || 
                    error.message.includes('insufficient funds')) {
             throw new Error('Insufficient funds in wallet');
@@ -471,8 +475,10 @@ const buyListedSharesFunction = async (listingId, sharesToBuy, overrides) => {
         console.error("Failed to claim rent:", error);
         if (error.message.includes("NoRentToClaim")) {
             throw new Error("No rent available to claim");
-        } else if (error.message.includes("RentPeriodNotEnded")) {
-            throw new Error("Rent period not ended");
+        } else if (error.message.includes("InsufficientShares")) {
+            throw new Error("You don't own any shares in this property");
+        } else if (error.message.includes("TransferFailed")) {
+            throw new Error("Failed to transfer rent. Please try again");
         }
         throw error;
     }
