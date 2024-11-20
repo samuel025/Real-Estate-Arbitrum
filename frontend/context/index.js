@@ -1007,6 +1007,22 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
     }
   }, []);
 
+  const returnUnclaimedRentFunction = async (propertyId) => {
+    try {
+      if (!contract) {
+        throw new Error("Contract not initialized");
+      }
+
+      if (!propertyId) {
+        throw new Error("Property ID is required");
+      }
+      const tx = await contract.call('returnUnclaimedRent', [propertyId]);
+      return tx;
+    } catch (error) {
+      throw new Error(error.message || "Failed to return unclaimed rent");
+    }
+  };
+
   const contextValue = {
     contract,
     address,
@@ -1050,6 +1066,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
     getRentPeriodInfo,
     deletePropertyMessageFunction,
     calculateLateFeesFunction,
+    returnUnclaimedRentFunction,
   };
 
   return (

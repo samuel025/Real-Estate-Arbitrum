@@ -76,7 +76,7 @@ const formatAccruedRent = (value) => {
 };
 
 export default function PropertyDetails() {
-  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, deletePropertyMessageFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, isContractLoading, propertyMessageFunction, connect } = useAppContext();
+  const { address, contract, getSinglePropertyFunction, buySharesFunction, getShareholderInfoFunction, deletePropertyMessageFunction, checkisRentDueFunction, removePropertyFunction, claimRentFunction, getRentPeriodStatus, payRentFunction, calculateLateFeesFunction, submitReviewFunction, getPropertyReviewsFunction, listSharesForSaleFunction, isPeriodClaimedFunction, getRentPeriodsFunction, getAccruedRentFunction, getPropertyListingsFunction, isContractLoading, propertyMessageFunction, connect, returnUnclaimedRentFunction } = useAppContext();
   const [property, setProperty] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -147,6 +147,8 @@ export default function PropertyDetails() {
   const [isPostingMessage, setIsPostingMessage] = useState(false);
   const [messageError, setMessageError] = useState('');
   const [contractOwner, setContractOwner] = useState(null);
+  const [unclaimedRentToReturn, setUnclaimedRentToReturn] = useState('0');
+  const [isReturningRent, setIsReturningRent] = useState(false);
 
   const calculateTotalCost = (shares) => {
     if (!property?.price || !property?.shares) return '0';
@@ -820,6 +822,61 @@ export default function PropertyDetails() {
     }
   }, [params.id, getPropertyReviewsFunction]);
 
+  const handleReturnUnclaimedRent = async () => {
+    if (!address || !property) return;
+    
+    try {
+      setIsReturningRent(true);
+      setErrorState({ message: null, type: null });
+
+      if (Date.now()/1000 <= property.currentRentPeriodEnd) {
+        throw new Error("Current rent period has not ended yet");
+      }
+
+      const unclaimedSharePercentage = (property.availableShares * 1e18) / property.totalShares;
+      const unclaimedRent = (property.rentPool * unclaimedSharePercentage) / 1e18;
+      
+      if (unclaimedRent <= 0) {
+        throw new Error("No unclaimed rent to return");
+      }
+
+      await returnUnclaimedRentFunction(params.id);
+      
+      setSuccessMessage('Unclaimed rent returned successfully!');
+
+      // Refresh property data
+      await fetchPropertyData();
+
+    } catch (error) {
+      setErrorState({
+        message: error.message || "Failed to return unclaimed rent",
+        type: 'transaction'
+      });
+    } finally {
+      setIsReturningRent(false);
+    }
+  };
+
+  useEffect(() => {
+    const checkUnclaimedRent = async () => {
+      if (!property) return;
+      
+      try {
+        // Calculate unclaimed rent
+        const unclaimedSharePercentage = (property.availableShares * 1e18) / property.totalShares;
+        const unclaimedRent = (property.rentPool * unclaimedSharePercentage) / 1e18;
+        setUnclaimedRentToReturn(formatEther(unclaimedRent.toString()));
+      } catch (error) {
+        console.error("Error checking unclaimed rent:", error);
+        setUnclaimedRentToReturn('0');
+      }
+    };
+
+    if (property) {
+      checkUnclaimedRent();
+    }
+  }, [property]);
+
   if (isLoading || !dataFetched) {
     return (
       <>
@@ -933,6 +990,39 @@ export default function PropertyDetails() {
                 </div>
               )}
             </div>
+            {(address === property?.owner) && (
+              <div className={styles.returnRentSection}>
+                <div className={styles.unclaimedRentInfo}>
+                  <span>Unclaimed Rent Available:</span>
+                  <span>{unclaimedRentToReturn} ETH</span>
+                </div>
+                
+                <button
+                  onClick={handleReturnUnclaimedRent}
+                  className={`${styles.returnRentButton} ${
+                    parseFloat(unclaimedRentToReturn) <= 0 || 
+                    isReturningRent || 
+                    Date.now()/1000 <= property.currentRentPeriodEnd 
+                      ? styles.disabled 
+                      : ''
+                  }`}
+                  disabled={
+                    parseFloat(unclaimedRentToReturn) <= 0 || 
+                    isReturningRent || 
+                    Date.now()/1000 <= property.currentRentPeriodEnd
+                  }
+                  title={
+                    Date.now()/1000 <= property.currentRentPeriodEnd 
+                      ? 'Current rent period has not ended yet'
+                      : parseFloat(unclaimedRentToReturn) <= 0 
+                        ? 'No unclaimed rent to return' 
+                        : 'Return unclaimed rent to owner'
+                  }
+                >
+                  {isReturningRent ? 'Returning Rent...' : 'Return Unclaimed Rent'}
+                </button>
+              </div>
+            )}
 
             {property && (
                 <>
