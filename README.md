@@ -1,4 +1,4 @@
-# RealEstate Tokenization Platform
+# Xuel RealEstate Tokenization Platform
 
 ## Overview
 
@@ -166,15 +166,6 @@ The contract emits detailed events for all major actions:
 - Arbitrum Sepolia testnet
 - Hardhat or Truffle
 
-2. **Testing**:
-```bash
-npx hardhat test
-# or
-truffle test
-```
-
-   The application will be available at `http://localhost:3000`.
-
 ## Usage Guide
 
 ### For Property Owners
@@ -200,21 +191,7 @@ truffle test
 - Main Contract: `0x039B0a4E5C69CD5C356c8d94d86C79BD208Ea3ad`
 - Network: Arbitrum Sepolia
 
-## Security Features
-
-- Automated rent distribution
-- Share ownership verification
-- Late payment handling
-- Default protection mechanisms
-
-## Future Enhancements
-
-- Multi-token support
-- Advanced analytics dashboard
-- Mobile application
-- Cross-chain integration
 
 ## Contributing
-
-Contributions are welcome! If you have suggestions for improvements or new features, please open an issue or submit a pull request.
+If you have suggestions for improvements or new features, please open an issue or submit a pull request.
 
