@@ -4,8 +4,8 @@
 
 A sophisticated blockchain-based real estate tokenization platform built on Arbitrum that enables property owners to tokenize real estate assets, manage rentals, and create a liquid secondary market for property shares. The platform combines traditional real estate investment with DeFi mechanics to provide a seamless, transparent, and efficient property investment ecosystem.
 
-Live at: https://realestate-tokenization.vercel.app/
-video Demo :  https://www.loom.com/share/8d718af56bb9414ebd400f21844c24cd?sid=c44d37cc-0bb9-46ee-833f-54aaffa4d99a
+- Live at: https://realestate-tokenization.vercel.app/
+- video Demo :  https://www.loom.com/share/8d718af56bb9414ebd400f21844c24cd?sid=c44d37cc-0bb9-46ee-833f-54aaffa4d99a
 
 ## Core Features
 
@@ -184,7 +184,7 @@ The contract emits detailed events for all major actions:
 #### Rent: This is what the shareholder will receive for the period.
             They can claim thier accrued rent whenever they want.
             It is advisable for the share holder to claim their rent before the period ends.
-            At the ent of the rent period, the property owner can claim the rent of shares that where not sold.
+            At the end of the rent period, the property owner can claim the rent of shares that where not sold.
             The rent you accrue depends on the percentage of shares you own and how long you hold them.
             If you sell your shares in the secondary market, you will not accrue any more rent for that period, the buyer will accrue the rent for the rest of the period.
 
