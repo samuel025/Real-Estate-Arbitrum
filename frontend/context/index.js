@@ -725,8 +725,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
           comment: review.comment,
           timestamp: review.timestamp.toString()
         }));
-      
-      console.log("Parsed reviews:", parsedReviews);
       return parsedReviews;
     } catch (error) {
       throw new Error("Could not fetch reviews");

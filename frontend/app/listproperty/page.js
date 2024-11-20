@@ -173,7 +173,7 @@ export default function ListProperty() {
                     </div>
 
                     <div className={styles.formGroup}>
-                        <label htmlFor="rent">Monthly Rent (ETH)</label>
+                        <label htmlFor="rent"> Rent (ETH)</label>
                         <input
                             type="number"
                             id="rent"

@@ -1045,11 +1045,8 @@ export default function PropertyDetails() {
                               <button 
                                 onClick={handleClaimRent}
                                 className={styles.claimButton}
-                                disabled={!rentPeriodStatus?.isActive}
-                                title={!rentPeriodStatus?.isActive ? 
-                                  'Rent period not active' : 
-                                  'Click to claim your accrued rent'}
-                              >
+                                disabled={parseFloat(accruedRentInfo?.amount || '0') <= 0}
+                                title={'Click to claim your accrued rent'}>
                                 Claim Accrued Rent
                               </button>
                             )}
