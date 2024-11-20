@@ -1,4 +1,4 @@
-# RealEstate Tokenization Platform
+# Xuel RealEstate Tokenization Platform
 
 ## Overview
 
