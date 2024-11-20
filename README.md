@@ -168,11 +168,33 @@ The contract emits detailed events for all major actions:
 
 ## Usage Guide
 
+
+### Terms 
+#### Period : A period is a the rent period that was set when listing the property.
+         It can be active or inactive.
+         If the period is active, that means rent has been paid for that period. 
+         If the period is inactive, that means rent has not been paid for that period.
+         After the period is over, the period becomes inactive until the rent is paid again.
+
+#### Marketplace: This is a secondary market where shareholders can list thier shares for sale. 
+         Shareholders can set the price and the number of shares they want to sell.
+         The property owner can buy back shares from the marketplace.
+
+#### Rent: This is what the shareholder will receive for the period.
+            They can claim thier accrued rent whenever they want.
+            It is advisable for the share holder to claim their rent before the period ends.
+            At the ent of the rent period, the property owner can claim the rent of shares that where not sold.
+            The rent you accrue depends on the percentage of shares you own and how long you hold them.
+            If you sell your shares in the secondary market, you will not accrue any more rent for that period, the buyer will accrue the rent for the rest of the period.
+
+
 ### For Property Owners
 1. Connect wallet and ensure sufficient ETH for gas
 2. Create new property listing with required details
 3. Set share distribution and rental terms
 4. Monitor and manage property performance
+5. You can also update the property details but you can only update the financial details if the period is inactive.
+6. You can send a message that will be displayed to anyone viewing the property.
 
 ### For Investors
 1. Browse available properties
@@ -180,11 +202,6 @@ The contract emits detailed events for all major actions:
 3. Collect rental income from owned shares
 4. Trade shares on secondary market
 
-### For Renters
-1. View property details and rental terms
-2. Process rent payments
-3. Submit property reviews
-4. Track payment history
 
 ## Smart Contract Addresses
 
