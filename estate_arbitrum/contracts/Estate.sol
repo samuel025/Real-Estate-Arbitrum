@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /**
- * @title RealEstateTokenization
+ * @title XuelEstateTokenization
  * @dev Contract for tokenizing real estate properties and managing rent distribution
  */
 contract RealEstateTokenization {
@@ -580,7 +580,6 @@ function updateProperty(
         emit PropertyRemoved(_propertyId, _owner);
     }
 
-    // View Functions
 
     function getProperty(uint256 _propertyId) 
         external 
@@ -627,7 +626,6 @@ function updateProperty(
         rentClaimed = shareholder.rentClaimed;
         
         if (shares > 0 && property.rentPool > 0) {
-            // Calculate rent for previous period
             uint256 previousPeriodRent = 0;
             if (property.currentRentPeriodStart > 0 && 
                 shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
@@ -646,11 +644,9 @@ function updateProperty(
                 }
             }
 
-            // Calculate rent for current/completed period
             uint256 currentPeriodRent = 0;
             if (property.currentRentPeriodStart > 0 && property.rentPool > 0) {
                 uint256 endTime = block.timestamp;
-                // If period has ended, use the period end time instead of current time
                 if (block.timestamp > property.currentRentPeriodEnd) {
                     endTime = property.currentRentPeriodEnd;
                 }
@@ -1105,7 +1101,6 @@ function updateProperty(
             return 0;
         }
 
-        // Calculate rent for previous period
         uint256 previousPeriodRent = 0;
         if (property.currentRentPeriodStart > 0 && 
             shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
@@ -1124,11 +1119,9 @@ function updateProperty(
             }
         }
 
-        // Calculate rent for current/completed period
         uint256 currentPeriodRent = 0;
         if (property.currentRentPeriodStart > 0 && property.rentPool > 0) {
             uint256 endTime = block.timestamp;
-            // If period has ended, use the period end time instead of current time
             if (block.timestamp > property.currentRentPeriodEnd) {
                 endTime = property.currentRentPeriodEnd;
             }
@@ -1279,7 +1272,6 @@ function updateProperty(
             return (0, periodStart, periodEnd, lastClaim);
         }
 
-        // Calculate rent for previous period
         uint256 previousPeriodRent = 0;
         if (property.currentRentPeriodStart > 0 && 
             shareholder.lastClaimTimestamp < property.currentRentPeriodStart) {
@@ -1298,11 +1290,9 @@ function updateProperty(
             }
         }
 
-        // Calculate rent for current/completed period
         uint256 currentPeriodRent = 0;
         if (property.currentRentPeriodStart > 0 && property.rentPool > 0) {
             uint256 endTime = block.timestamp;
-            // If period has ended, use the period end time instead of current time
             if (block.timestamp > property.currentRentPeriodEnd) {
                 endTime = property.currentRentPeriodEnd;
             }

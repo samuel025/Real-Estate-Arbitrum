@@ -31,7 +31,7 @@ export default function Navbar() {
     <nav className={styles.navbar}>
       <div className={styles.navContent}>
         <Link href="/" className={styles.logo}>
-          RealEstate
+          XuelTokenization
         </Link>
 
         <button 

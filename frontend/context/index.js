@@ -318,7 +318,7 @@ export const AppProvider = ({children}) => {
           });
           console.info("contract call success: ", data);
       } catch (err) {
-          console.error("contract call failure: ", err);
+          console.error("contract call failure");
       }
   }
 
@@ -344,15 +344,13 @@ const buySharesFunction = async (formData) => {
 
         return data;
 
-    } catch (error) {
-        console.error("Error in buySharesFunction:", error);
-        
+    } catch (error) {        
         if (error.message.includes('Transaction reverted without a reason') ||
             error.message.includes('missing revert data in call exception')) {
             throw new Error('Transaction failed - please check your wallet balance and try again');
         }
         
-        throw error;
+        throw new Error("Failed to purchase shares");
     }
 };
 
@@ -380,9 +378,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
 
         console.info("Listed shares purchase successful", data);
         return data;
-    } catch (error) {
-        console.error("Failed to purchase listed shares", error);
-        
+    } catch (error) {        
         if (error.message.includes('InvalidAmount')) {
             throw new Error('Invalid transaction amount. Please check the share price and quantity.');
         } else if (error.code === 'INSUFFICIENT_FUNDS' || 
@@ -390,7 +386,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             throw new Error('Insufficient funds in wallet');
         }
         
-        throw error;
+        throw new Error("Failed to purchase shares");
     }
 };
 
@@ -431,12 +427,9 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             }
         });
 
-        console.info("Rent payment successful:", data);
         return data;
 
-    } catch (error) {
-        console.error("Error in payRentFunction:", error);
-        
+    } catch (error) {    
         if (error.message === 'INSUFFICIENT_FUNDS' || 
             error.code === 'INSUFFICIENT_FUNDS' ||
             error.message.includes('insufficient funds')) {
@@ -449,7 +442,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             throw new Error('Transaction failed - please check required amount');
         }
         
-        throw error;
+        throw new Error("Failed to pay rent");
     }
   };
 
@@ -480,7 +473,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         } else if (error.message.includes("TransferFailed")) {
             throw new Error("Failed to transfer rent. Please try again");
         }
-        throw error;
+        throw new Error("Failed to claim rent");
     }
   }
 
@@ -495,7 +488,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       })
       console.info("Review submitted succesfully", data)
     } catch (error) {
-      console.error("failed to submit review", error)
+      throw new Error("Failed to submit review");
     }
   }
 
@@ -510,7 +503,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       })
       console.info("Property removed")
     } catch (error) {
-      console.error("failed to remove property")
+      throw new Error("Failed to remove property");
     }
   }
 
@@ -528,7 +521,6 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         args: [propertyId, shares, priceInWei]
       });
 
-      console.info("Shares listed successfully:", data);
       return data;
 
     } catch (error) {
@@ -539,7 +531,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         throw new Error("Invalid price");
       }
       
-      throw error;
+      throw new Error("Failed to list shares for sale");
     }
   };
 
@@ -554,8 +546,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       console.info("Listing cancelled successfully", data);
       return data;
     } catch (error) {
-      console.error("Failed to cancel listing", error);
-      throw error;
+      throw new Error("Failed to cancel listing");
     }
   }
 
@@ -571,8 +562,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       console.info("Listing price updated successfully", data);
       return data;
     } catch (error) {
-      console.error("Failed to update listing price", error);
-      throw error;
+      throw new Error("Failed to update listing price");
     }
   }
 
@@ -581,8 +571,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
   const getActiveListingsFunction = async () => {
     try {
         if (!contract) {
-            console.error("Contract not initialized");
-            return [];
+            throw new Error("Contract not initialized");
         }
         const [listings, listingIds] = await contract.call('getAllListings');
         if (!listings || listings.length === 0) {
@@ -601,8 +590,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
 
         return processedListings;
     } catch (error) {
-        console.error("Error getting active listings:", error);
-        return [];
+        throw new Error("Error getting active listings");
     }
   };
 
@@ -630,8 +618,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
 
         return activeListings;
     } catch (error) {
-        console.error("Error getting property listings:", error);
-        return [];
+        throw new Error("Error getting property listings");
     }
   }
   
@@ -651,8 +638,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       }));
       return parsedListings;
     } catch (error) {
-      console.error("Failed to get listings by price range", error);
-      throw error;
+      throw new Error("Failed to get listings by price range");
     }
   }
 
@@ -682,8 +668,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       }
         return parsedProperty;
     } catch (err) {
-        console.error("Error getting single property:", err);
-        return null;
+        throw new Error("Error getting single property");
     }
   }, [contract]);
 
@@ -702,8 +687,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       }));
       return parsedListings;
     } catch (error) {
-      console.error("Failed to get user listings", error);
-      throw error;
+      throw new Error("Failed to get user listings");
     }
   }
 
@@ -719,8 +703,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         UnclaimedRent: shareholderInfo[2]  
       }];
     } catch (error) {
-      console.error("Unable to fetch data:", error);
-      return null;
+      throw new Error("Unable to fetch data");
     }
   };
 
@@ -746,8 +729,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       console.log("Parsed reviews:", parsedReviews);
       return parsedReviews;
     } catch (error) {
-      console.error("Could not fetch reviews:", error);
-      return [];
+      throw new Error("Could not fetch reviews");
     }
   };
 
@@ -756,7 +738,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       const check = await contract.call('isRentDue', [propertyId])
       return check
     } catch {
-      console.error("couldn't fetch")
+      throw new Error("couldn't fetch")
     }
   }
 
@@ -779,7 +761,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         }));
         return parsedProperties;
     } catch (error) {
-        console.error("Couldn't fetch data");
+        throw new Error("Couldn't fetch data");
     }
   }
 
@@ -806,8 +788,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         
         return parsedProperties;
     } catch (error) {
-        console.error("Error in getOwnerPropertiesFunction:", error);
-        throw error;
+        throw new Error("Could not get owner properties");
     }
   }
 
@@ -824,8 +805,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             remainingTime: Number(status.remainingTime)
         };
     } catch (error) {
-        console.error("Error getting rent period status:", error);
-        throw error;
+        throw new Error("Error getting rent period status");
     }
   };
 
@@ -856,8 +836,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
 
         return [processedProperty]; 
     } catch (error) {
-        console.error("Error in getPropertyFunction:", error);
-        return null;
+        throw new Error("Error in getPropertyFunction");
     }
   };
 
@@ -866,8 +845,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       const isClaimed = await contract.call('isPeriodClaimed', [propertyId, periodId, shareholder]);
       return isClaimed;
     } catch (error) {
-      console.error("Error checking period claim status:", error);
-      throw error;
+      throw new Error("Error checking period claim status");
     }
   };
 
@@ -883,8 +861,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         rentAmount: rentPeriods.rentAmount ? ethers.utils.formatEther(rentPeriods.rentAmount) : "0"
       };
     } catch (error) {
-      console.error("Error fetching rent periods:", error);
-      throw error;
+      throw new Error("Error fetching rent periods");
     }
   };
 
@@ -893,8 +870,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
       const fees = await contract.call('getPlatformFees');
       return ethers.utils.formatEther(fees);
     } catch (error) {
-      console.error("Error fetching platform fees:", error);
-      throw error;
+      throw new Error("Error fetching platform fees");
     }
   };
 
@@ -908,8 +884,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             nextDueDate: new Date(status.nextDueDate.toNumber() * 1000)
         };
     } catch (error) {
-        console.error("Error getting rent status:", error);
-        throw error;
+        throw new Error("Error getting rent status");
     }
   };
 
@@ -925,8 +900,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             platformPortion: ethers.utils.formatEther(platformPortion)
         };
     } catch (error) {
-        console.error("Error calculating late fee distribution:", error);
-        throw error;
+        throw new Error("Error calculating late fee distribution");
     }
   };
 
@@ -956,8 +930,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         };
 
     } catch (error) {
-        console.error("Error getting accrued rent:", error);
-        throw error;
+        throw new Error("Error getting accrued rent");
     }
   };
 
@@ -986,8 +959,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             rentPool: ethers.utils.formatEther(property.rentPool)
         };
     } catch (error) {
-        console.error("Error getting rent period info:", error);
-        throw error;
+        throw new Error("Error getting rent period info");
     }
   }
 
@@ -997,8 +969,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         const data = await contract.call('postPropertyMessage', [propertyId, message]);
         return data;
     } catch (error) {
-        console.error("Error posting property message:", error);
-        throw error;
+        throw new Error("Error posting property message");
     }
   };
 
@@ -1007,8 +978,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
         const data = await contract.call('deletePropertyMessage', [propertyId]);
         return data;
     } catch (error) {
-        console.error("Error deleting property message:", error);
-        throw error;
+        throw new Error("Error deleting property message");
     }
   };
 
