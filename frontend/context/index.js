@@ -380,17 +380,35 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             throw new Error('Invalid or inactive listing');
         }
 
+        const propertyId = listingDetails[2];
+        const seller = listingDetails[3];
+
+        // Check for any unclaimed rent for the buyer if they already own shares
+        const buyerInfo = await contract.call('getShareholderInfo', [propertyId, address]);
+        const unclaimedRent = buyerInfo[2]; // UnclaimedRent
+
+        // If buyer has unclaimed rent, claim it first
+        if (unclaimedRent.gt(0)) {
+            try {
+                await claimRent({
+                    args: [propertyId, address]
+                });
+                console.info("Successfully claimed buyer's accrued rent before purchase");
+            } catch (claimError) {
+                console.error("Failed to claim accrued rent:", claimError);
+                throw new Error("Please claim your accrued rent before buying additional shares");
+            }
+        }
+
         // Get exact price per share from the listing
         const pricePerShare = ethers.BigNumber.from(listingDetails[5]); // pricePerShare
         const totalCost = pricePerShare.mul(sharesToBuy);
 
-        // Send exactly the total cost without platform fee
-        // The contract will handle the platform fee internally
         const data = await contract.call('buyListedShares', [
             listingId,
             sharesToBuy
         ], {
-            value: totalCost // Exactly matches what the contract expects
+            value: totalCost
         });
 
         console.info("Listed shares purchase successful", data);
@@ -403,7 +421,7 @@ const buyListedSharesFunction = async (listingId, sharesToBuy) => {
             throw new Error('Insufficient funds in wallet');
         }
         
-        throw new Error("Failed to purchase shares");
+        throw error;
     }
 };
 

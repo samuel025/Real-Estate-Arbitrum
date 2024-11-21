@@ -808,7 +808,6 @@ export default function PropertyDetails() {
     const fetchReviews = async () => {
       try {
         const fetchedReviews = await getPropertyReviewsFunction(params.id);
-        console.log("Fetched reviews:", fetchedReviews);
         if (Array.isArray(fetchedReviews)) {
           setReviews(fetchedReviews);
         }
@@ -876,6 +875,47 @@ export default function PropertyDetails() {
       checkUnclaimedRent();
     }
   }, [property]);
+
+  // Add this function to check if user has reviewed
+  const checkHasReviewed = useCallback(async () => {
+    if (!contract || !address || !params.id) return;
+    try {
+      const hasReviewed = await contract.call('hasReviewed', [params.id, address]);
+      setHasReviewed(hasReviewed);
+    } catch (error) {
+      console.error("Error checking review status:", error);
+    }
+  }, [contract, address, params.id]);
+
+  // Add this to your useEffect that fetches data
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!params.id || !contract || isContractLoading) return;
+      
+      try {
+        setIsLoading(true);
+        setErrorState({ message: null, type: null });
+
+        // Existing data fetching...
+        
+        // Add this line to check review status
+        if (address) {
+          await checkHasReviewed();
+        }
+
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setErrorState({
+          message: err.message || "Failed to load property data",
+          type: 'fetch'
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [params.id, contract, address, isContractLoading, checkHasReviewed]);
 
   if (isLoading || !dataFetched) {
     return (
@@ -1152,7 +1192,7 @@ export default function PropertyDetails() {
             <div className={styles.reviewsSection}>
               <div className={styles.reviewsHeader}>
                 <h3>Property Reviews</h3>
-                {!hasReviewed && shareholdersInfo?.[0]?.shares > 0 && (
+                {!hasReviewed && shareholdersInfo?.[0]?.shares > 0 && !hasReviewed && (
                   <button 
                     onClick={() => setIsReviewModalOpen(true)}
                     className={styles.reviewButton}
