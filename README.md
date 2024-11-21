@@ -186,6 +186,7 @@ The contract emits detailed events for all major actions:
          Shareholders can set the price and the number of shares they want to sell.
          The lister can cancel his listings from the marketplace also.
          The property owner can buy back shares from the marketplace.
+         When shares are bought from the marketplace, the accrued rent your previous shares of the property "(if you have shares on the property before)" is automatically claimed.
 
 #### Rent: This is what the shareholder will receive for the period.
             They can claim thier accrued rent whenever they want.
