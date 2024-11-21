@@ -2,9 +2,15 @@
 
 ## Overview
 
-A sophisticated blockchain-based real estate tokenization platform built on Arbitrum that enables property owners to tokenize real estate assets, manage rentals, and create a liquid secondary market for property shares. The platform combines traditional real estate investment with DeFi mechanics to provide a seamless, transparent, and efficient property investment ecosystem.
+A sophisticated blockchain-based real estate tokenization platform built on Arbitrum that enables property owners to tokenize real estate assets, manage rentals, and create a liquid secondary market for property shares. The platform combines traditional real estate investment with DeFi mechanics to provide a seamless, transparent, and efficient property investment ecosystem. It makes it easy for users to invest in real estate without any hassle.
 
-Live at: https://realestate-tokenization.vercel.app/
+Traditional real estate investments are often inaccessible due to high costs, lack of liquidity, and complex processes especially legal issues.
+The Xuel Tokenization Platform bridges this gap by allowing property owners to list properties and tokenize ownership into shares. Buyers can invest in fractions of properties, making real estate investments more affordable, liquid, and accessible.
+
+
+
+- Live at: https://realestate-tokenization.vercel.app/
+- video Demo :  https://www.loom.com/share/6947288a359a43ec9ce464570784c8de
 
 ## Core Features
 
@@ -178,14 +184,19 @@ The contract emits detailed events for all major actions:
 
 #### Marketplace: This is a secondary market where shareholders can list thier shares for sale. 
          Shareholders can set the price and the number of shares they want to sell.
+         The lister can cancel his listings from the marketplace also.
          The property owner can buy back shares from the marketplace.
 
 #### Rent: This is what the shareholder will receive for the period.
             They can claim thier accrued rent whenever they want.
             It is advisable for the share holder to claim their rent before the period ends.
-            At the ent of the rent period, the property owner can claim the rent of shares that where not sold.
+            At the end of the rent period, the property owner can claim the rent of shares that where not sold.
             The rent you accrue depends on the percentage of shares you own and how long you hold them.
             If you sell your shares in the secondary market, you will not accrue any more rent for that period, the buyer will accrue the rent for the rest of the period.
+            
+#### Message: This is a message that is displayed on the property detail page.
+              The property owner can pass a message for a property, and the message can be viewed by the shareholders or anyone.
+              The contract owner can also pass a message the same way.
 
 
 ### For Property Owners
