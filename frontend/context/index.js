@@ -333,6 +333,23 @@ const buySharesFunction = async (formData) => {
             throw new Error("Contract or wallet not connected");
         }
 
+        // Check for any unclaimed rent first
+        const shareholderInfo = await contract.call('getShareholderInfo', [propertyId, address]);
+        const unclaimedRent = shareholderInfo[2]; // UnclaimedRent
+
+        // If there's unclaimed rent, claim it first and require success
+        if (unclaimedRent.gt(0)) {
+            try {
+                await claimRent({
+                    args: [propertyId, address]
+                });
+                console.info("Successfully claimed accrued rent before purchase");
+            } catch (claimError) {
+                console.error("Failed to claim accrued rent:", claimError);
+                throw new Error("Please claim your accrued rent before buying additional shares");
+            }
+        }
+
         const priceInWei = ethers.utils.parseEther(price.toString());
 
         const data = await buyShares({
@@ -350,7 +367,7 @@ const buySharesFunction = async (formData) => {
             throw new Error('Transaction failed - please check your wallet balance and try again');
         }
         
-        throw new Error("Failed to purchase shares");
+        throw error; // Propagate the error, including the rent claim requirement
     }
 };
 
